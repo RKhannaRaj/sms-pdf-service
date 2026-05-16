@@ -4,7 +4,7 @@ const path = require("path");
 
 const { PdfFontManager } = require(path.join(
   process.cwd(),
-  "lib/pdf/pdf-font-manager",
+  "lib/pdf/font-manager",
 ));
 
 const {
@@ -19,7 +19,6 @@ const {
 } = require("./pdf-helpers");
 
 const fs = require("fs");
-const path = require("path");
 
 async function generateInvoicePdf(req, res) {
   try {
