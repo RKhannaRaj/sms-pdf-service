@@ -4,9 +4,16 @@ node_modules
 .env
 *.pdf
 *.zip
+dist
+build
+*.ttf
+.git
 
 public/fonts/**/*.ttf
+
 !public/fonts/NotoSans/NotoSans-Regular.ttf
 !public/fonts/NotoSans/NotoSans-Bold.ttf
 !public/fonts/RobotoBold/Roboto-Bold.ttf
 !public/fonts/dejavu-sans/DejaVuSans.ttf
+
+
