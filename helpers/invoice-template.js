@@ -201,7 +201,7 @@ async function generateInvoicePdf(req, res) {
       y += 45;
 
       font.use("regular");
-      doc.fontSize(10);
+      doc.fontSize(10).fillColor("#000");
 
       y = drawKeyValueRows(doc, {
         startX: 40,

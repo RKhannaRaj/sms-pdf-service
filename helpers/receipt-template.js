@@ -317,14 +317,14 @@ async function generatePaymentReceiptPdf(req, res) {
         y += 40;
 
         //doc.font("Helvetica-Bold")
-        font.use("bold ");
-        doc.fontSize(11).text("Notes", 40, y);
+        font.use("bold");
+        doc.fontSize(11).fillColor("#000").text("Notes", 40, y);
 
         y += 18;
 
         //doc.font("Helvetica")
         font.use("regular");
-        doc.fontSize(10).text(payment.notes, 40, y);
+        doc.fontSize(10).fillColor("#000").text(payment.notes, 40, y);
       }
 
       // =====================================
