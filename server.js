@@ -1,8 +1,8 @@
 const express = require("express");
 
-const { generateInvoicePdf } = require("./app/helpers/invoice-template");
+const { generateInvoicePdf } = require("./helpers/invoice-template");
 
-const { generatePaymentReceiptPdf } = require("./app/helpers/receipt-template");
+const { generatePaymentReceiptPdf } = require("./helpers/receipt-template");
 
 const app = express();
 
