@@ -7,11 +7,10 @@ class PdfFontManager {
     const base = path.join(process.cwd(), "public/fonts");
 
     this.fonts = {
-      regular: path.join(base, "Noto_Sans/NotoSans-Regular.ttf"),
-      bold: path.join(base, "Noto_Sans/NotoSans-Bold.ttf"),
+      regular: path.join(base, "NotoSans/NotoSans-Regular.ttf"),
+      bold: path.join(base, "NotoSans/NotoSans-Bold.ttf"),
 
-      robotoRegular: path.join(base, "Roboto/Roboto-Regular.ttf"),
-      robotoBold: path.join(base, "Roboto/Roboto-Bold.ttf"),
+      robotoBold: path.join(base, "RobotoBold/Roboto-Bold.ttf"),
 
       dejavu: path.join(base, "dejavu-sans/DejaVuSans.ttf"),
     };
@@ -28,7 +27,11 @@ class PdfFontManager {
       dejavu: this.fonts.dejavu,
     };
 
-    this.doc.font(map[style] || this.fonts.regular);
+    const fontPath = map[style];
+    if (!fontPath) {
+      throw new Error(`Font not found for style: ${style}`);
+    }
+    this.doc.font(fontPath);
     return this;
   }
 
