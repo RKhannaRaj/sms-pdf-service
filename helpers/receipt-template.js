@@ -67,7 +67,8 @@ async function generatePaymentReceiptPdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font.use("bold").fontSize(28).fillColor("#000").text("Receipt", 40, y);
+      font.use("bold");
+      doc.fontSize(28).fillColor("#000").text("Receipt", 40, y);
 
       y += 45;
 
@@ -120,7 +121,8 @@ async function generatePaymentReceiptPdf(req, res) {
         .text(company.name || "", 40, y);
 
       //doc.font("Helvetica")
-      font.use("regular").fontSize(10).fillColor(LIGHT_GRAY);
+      font.use("regular");
+      doc.fontSize(10).fillColor(LIGHT_GRAY);
 
       let companyY = y + 18;
 
@@ -172,7 +174,8 @@ async function generatePaymentReceiptPdf(req, res) {
         .text("Received From:", 350, y);
 
       //doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
-      font.use("regular").fontSize(10).fillColor(LIGHT_GRAY);
+      font.use("regular");
+      doc.fontSize(10).fillColor(LIGHT_GRAY);
 
       let payerY = y + 18;
 
@@ -314,12 +317,14 @@ async function generatePaymentReceiptPdf(req, res) {
         y += 40;
 
         //doc.font("Helvetica-Bold")
-        font.use("bold ").fontSize(11).text("Notes", 40, y);
+        font.use("bold ");
+        doc.fontSize(11).text("Notes", 40, y);
 
         y += 18;
 
         //doc.font("Helvetica")
-        font.use("regular").fontSize(10).text(payment.notes, 40, y);
+        font.use("regular");
+        doc.fontSize(10).text(payment.notes, 40, y);
       }
 
       // =====================================

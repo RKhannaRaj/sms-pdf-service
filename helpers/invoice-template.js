@@ -195,11 +195,13 @@ async function generateInvoicePdf(req, res) {
 
       // doc
       //   //.font("Helvetica-Bold")
-      font.use("bold").fontSize(28).fillColor("#000").text("Invoice", 40, y);
+      font.use("bold");
+      doc.fontSize(28).fillColor("#000").text("Invoice", 40, y);
 
       y += 45;
 
-      font.use("regular").fontSize(10);
+      font.use("regular");
+      doc.fontSize(10);
 
       y = drawKeyValueRows(doc, {
         startX: 40,
@@ -256,7 +258,8 @@ async function generateInvoicePdf(req, res) {
         .text(company.name || "Company Name", 40, y);
 
       //doc.font("Helvetica").
-      font.use("regular").fontSize(10).fillColor(LIGHT_GRAY);
+      font.use("regular");
+      doc.fontSize(10).fillColor(LIGHT_GRAY);
 
       let companyY = y + 18;
 
@@ -299,10 +302,12 @@ async function generateInvoicePdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font.use("bold").fontSize(12).fillColor("#000").text("Bill To:", 350, y);
+      font.use("bold");
+      doc.fontSize(12).fillColor("#000").text("Bill To:", 350, y);
 
       //doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
-      font.use("regular").fontSize(10).fillColor(LIGHT_GRAY);
+      font.use("regular");
+      doc.fontSize(10).fillColor(LIGHT_GRAY);
 
       let billerY = y + 18;
 
@@ -565,7 +570,8 @@ async function generateInvoicePdf(req, res) {
 
       for (const child of Object.keys(grouped)) {
         //doc.font("Helvetica-Bold")
-        font.use("bold").fontSize(10).text(child, 40, y);
+        font.use("bold");
+        doc.fontSize(10).text(child, 40, y);
 
         y += 18;
 

@@ -123,43 +123,31 @@ function drawKeyValueRows(doc, options) {
     //    doc
     //    .font(labelFont)
     if (fontManager) {
-      fontManager
-        .use("bold")
-        .fontSize(fontSize)
-        .fillColor(labelColor)
-        .text(row.label, startX, currentY, {
-          width: labelWidth,
-          align: labelAlign,
-        });
+      fontManager.use("bold");
     } else {
-      doc
-        .font(labelFont)
-        .fontSize(fontSize)
-        .fillColor(labelColor)
-        .text(row.label, startX, currentY, {
-          width: labelWidth,
-          align: labelAlign,
-        });
+      doc.font(labelFont);
     }
+    doc
+      .fontSize(fontSize)
+      .fillColor(labelColor)
+      .text(row.label, startX, currentY, {
+        width: labelWidth,
+        align: labelAlign,
+      });
+
     if (fontManager) {
-      fontManager
-        .use("regular")
-        .fontSize(fontSize)
-        .fillColor(valueColor)
-        .text(String(row.value), startX + labelWidth, currentY, {
-          width: valueWidth,
-          align: valueAlign,
-        });
+      fontManager.use("regular");
     } else {
-      doc
-        .font(valueFont)
-        .fontSize(fontSize)
-        .fillColor(valueColor)
-        .text(String(row.value), startX + labelWidth, currentY, {
-          width: valueWidth,
-          align: valueAlign,
-        });
+      doc.font(valueFont);
     }
+    doc
+      .fontSize(fontSize)
+      .fillColor(valueColor)
+      .text(String(row.value), startX + labelWidth, currentY, {
+        width: valueWidth,
+        align: valueAlign,
+      });
+
     if (drawRowBorders && index < rows.length - 1) {
       doc
         .moveTo(startX, currentY + rowHeight - 3)
