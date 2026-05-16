@@ -2,10 +2,12 @@ const PDFDocument = require("pdfkit");
 
 const path = require("path");
 
-const { PdfFontManager } = require(path.join(
-  process.cwd(),
-  "lib/pdf/font-manager",
-));
+// const { PdfFontManager } = require(path.join(
+//   process.cwd(),
+//   "lib/pdf/font-manager",
+// ));
+
+const { PdfFontManager } = require("../lib/pdf/font-manager");
 
 const {
   GREEN,
