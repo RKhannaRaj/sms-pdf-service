@@ -1,0 +1,887 @@
+const express = require("express");
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const path = require("path");
+
+const app = express();
+
+app.use(express.json({ limit: "10mb" }));
+
+app.post("/generate-pdf", async (req, res) => {
+  try {
+    const { invoices, companyDetails, companyBankDetails } = req.body;
+
+    if (!invoices || !invoices.length) {
+      return res.status(400).json({
+        error: "No invoices supplied",
+      });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+
+    res.setHeader("Content-Disposition", "inline; filename=invoices.pdf");
+
+    const doc = new PDFDocument({
+      margin: 40,
+      size: "A4",
+    });
+
+    doc.pipe(res);
+
+    // =========================================
+    // CONFIG
+    // =========================================
+
+    const GREEN = "#59c2a3";
+    const LIGHT_GRAY = "#666666";
+
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+
+    // Optional logo path
+    //    const logoPath = path.join(__dirname, "logo.png");
+    const logoPath = path.join(__dirname, "assets", "logo.png");
+
+    // =========================================
+    // HELPERS
+    // =========================================
+
+    const formatMoney = (amount) => {
+      return Number(amount || 0).toFixed(2);
+    };
+
+    const drawTopLine = () => {
+      doc
+        .moveTo(0, 0)
+        .lineTo(pageWidth, 0)
+        .lineWidth(12)
+        .strokeColor(GREEN)
+        .stroke();
+    };
+
+    const drawFooter = (pageNumber) => {
+      const footerY = pageHeight - 65;
+
+      // dotted line
+      doc
+        .moveTo(40, footerY)
+        .lineTo(pageWidth - 40, footerY)
+        .dash(2, { space: 2 })
+        .strokeColor("#999")
+        .stroke();
+
+      doc.undash();
+
+      doc
+        .fontSize(9)
+        .fillColor("#666")
+        .text(`Page ${pageNumber}`, 0, footerY + 10, {
+          align: "center",
+        });
+    };
+
+    const drawTableHeader = (y, hasDiscount, taxColumns) => {
+      const cols = [];
+
+      let x = 40;
+
+      cols.push({
+        label: "Charge Name",
+        x,
+        width: 170,
+      });
+
+      x += 170;
+
+      cols.push({
+        label: "Amount",
+        x,
+        width: 70,
+      });
+
+      x += 70;
+
+      if (hasDiscount) {
+        cols.push({
+          label: "Discount %",
+          x,
+          width: 70,
+        });
+
+        x += 70;
+
+        cols.push({
+          label: "Discount",
+          x,
+          width: 70,
+        });
+
+        x += 70;
+      }
+
+      // Dynamic Tax Columns
+      for (const taxName of taxColumns) {
+        cols.push({
+          label: taxName,
+          x,
+          width: 60,
+        });
+
+        x += 60;
+      }
+
+      cols.push({
+        label: "Total",
+        x,
+        width: 70,
+      });
+
+      doc.font("Helvetica-Bold").fontSize(10);
+
+      cols.forEach((c) => {
+        doc.text(c.label, c.x, y, {
+          width: c.width,
+          align: c.label === "Charge Name" ? "left" : "right",
+        });
+      });
+
+      // underline
+      doc
+        .moveTo(40, y + 18)
+        .lineTo(pageWidth - 40, y + 18)
+        .strokeColor("#000")
+        .lineWidth(1)
+        .stroke();
+
+      return cols;
+    };
+
+    const drawTableRow = (y, row, cols, hasDiscount, taxColumns) => {
+      doc.font("Helvetica").fontSize(10);
+
+      const values = [];
+
+      values.push(row.chargeName);
+
+      values.push(formatMoney(row.chargeAmount));
+
+      if (hasDiscount) {
+        values.push(row.discountPercent ? `${row.discountPercent}%` : "-");
+
+        values.push(row.discountAmount ? formatMoney(row.discountAmount) : "-");
+      }
+
+      // Dynamic tax values
+      for (const taxName of taxColumns) {
+        values.push(row.taxes[taxName] ? formatMoney(row.taxes[taxName]) : "-");
+      }
+
+      values.push(formatMoney(row.total));
+
+      cols.forEach((c, i) => {
+        doc.text(values[i], c.x, y, {
+          width: c.width,
+          align: i === 0 ? "left" : "right",
+        });
+      });
+    };
+
+    // Draw valueKey table:
+
+    const drawKeyValueRows = ({
+      startX,
+      startY,
+
+      labelWidth = 120,
+      valueWidth = 120,
+
+      rowHeight = 18,
+
+      rows = [],
+
+      labelAlign = "left",
+      valueAlign = "left",
+
+      drawTopBorder = false,
+      drawRowBorders = false,
+
+      borderColor = "#999",
+
+      labelFont = "Helvetica-Bold",
+      valueFont = "Helvetica",
+
+      labelColor = "#000",
+      valueColor = "#000",
+
+      fontSize = 10,
+    }) => {
+      let currentY = startY;
+
+      const tableWidth = labelWidth + valueWidth;
+
+      // =========================
+      // TOP BORDER
+      // =========================
+
+      if (drawTopBorder) {
+        doc
+          .moveTo(startX, currentY - 4)
+          .lineTo(startX + tableWidth, currentY - 4)
+          .dash(2, { space: 2 })
+          .strokeColor(borderColor)
+          .stroke();
+
+        doc.undash();
+      }
+
+      rows.forEach((row, index) => {
+        if (!row.value) return;
+
+        // LABEL
+        doc
+          .font(labelFont)
+          .fontSize(fontSize)
+          .fillColor(labelColor)
+          .text(row.label, startX, currentY, {
+            width: labelWidth,
+            align: labelAlign,
+          });
+
+        // VALUE
+        doc
+          .font(valueFont)
+          .fontSize(fontSize)
+          .fillColor(valueColor)
+          .text(String(row.value), startX + labelWidth, currentY, {
+            width: valueWidth,
+            align: valueAlign,
+          });
+
+        // =========================
+        // ROW BORDER
+        // =========================
+
+        if (drawRowBorders && index < rows.length - 1) {
+          doc
+            .moveTo(startX, currentY + rowHeight - 3)
+            .lineTo(startX + tableWidth, currentY + rowHeight - 3)
+            .dash(1, { space: 2 })
+            .strokeColor(borderColor)
+            .stroke();
+
+          doc.undash();
+        }
+
+        currentY += rowHeight;
+
+        // =========================
+        // BOTTOM BORDER
+        // =========================
+
+        // if (drawTopBorder) {
+        //   doc
+        //     .moveTo(startX, currentY - 4)
+        //     .lineTo(startX + tableWidth, currentY - 4)
+        //     .dash(2, { space: 2 })
+        //     .strokeColor(borderColor)
+        //     .stroke();
+
+        //   doc.undash();
+        // }
+      });
+
+      return currentY;
+    };
+
+    // =========================================
+    // GENERATE
+    // =========================================
+
+    let pageNumber = 1;
+
+    for (let invIndex = 0; invIndex < invoices.length; invIndex++) {
+      const invoice = invoices[invIndex];
+
+      if (invIndex > 0) {
+        doc.addPage();
+        pageNumber++;
+      }
+
+      drawTopLine();
+
+      // =====================================
+      // HEADER SECTION
+      // =====================================
+
+      let y = 40;
+
+      // LEFT
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(28)
+        .fillColor("#000")
+        .text("Invoice", 40, y);
+
+      y += 45;
+
+      doc.fontSize(10).font("Helvetica");
+
+      y = drawKeyValueRows({
+        startX: 40,
+        startY: y,
+        labelWidth: 90,
+        valueWidth: 180,
+        rowHeight: 18,
+
+        rows: [
+          {
+            label: "Invoice No",
+            value: invoice.invoiceNumber,
+          },
+          {
+            label: "Date of Issue",
+            value: invoice.invoiceDate,
+          },
+          {
+            label: "Due Date",
+            value: invoice.dueDate,
+          },
+        ],
+      });
+      // RIGHT LOGO
+      const logoWidth = 150;
+
+      const logoStartX = pageWidth - 40 - logoWidth;
+
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, logoStartX, 25, {
+          width: logoWidth,
+        });
+      }
+
+      // =====================================
+      // COMPANY + BILLER SECTION
+      // =====================================
+
+      y += 50;
+
+      // =====================================
+      // COMPANY DETAILS
+      // =====================================
+
+      const company = companyDetails || {};
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .fillColor("#000")
+        .text(company.name || "Company Name", 40, y);
+
+      doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
+
+      let companyY = y + 18;
+
+      if (company.addressLine1) {
+        doc.text(company.addressLine1, 40, companyY);
+        companyY += 14;
+      }
+
+      if (company.addressLine2) {
+        doc.text(company.addressLine2, 40, companyY);
+        companyY += 14;
+      }
+
+      if (company.postcode) {
+        doc.text(`${company.postcode}-${company.addressLine3}`, 40, companyY);
+        companyY += 14;
+      }
+
+      if (company.country) {
+        doc.text(company.country, 40, companyY);
+        companyY += 14;
+      }
+
+      if (company.phone) {
+        doc.text(company.phone, 40, companyY);
+        companyY += 14;
+      }
+
+      if (company.email) {
+        doc.text(company.email, 40, companyY);
+        companyY += 14;
+      }
+
+      if (company.tax1Code) {
+        doc.text(`${company.tax1Name}-${company.tax1Code}`, 40, companyY);
+        companyY += 14;
+      }
+
+      // companyY = drawKeyValueRows({
+      //   startX: 40,
+      //   startY: companyY,
+      //   labelWidth: 45,
+      //   valueWidth: 220,
+      //   rowHeight: 16,
+
+      //   labelFont: "Helvetica",
+      //   valueFont: "Helvetica",
+
+      //   rows: [
+      //     {
+      //       label: "Phone",
+      //       value: company.phone,
+      //     },
+      //     {
+      //       label: "Email",
+      //       value: company.email,
+      //     },
+      //     {
+      //       label: company.tax1Name || "Tax",
+      //       value: company.tax1Code,
+      //     },
+      //   ],
+      // });
+
+      // Biller Right
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .fillColor("#000")
+        .text("Bill To:", 350, y);
+
+      doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
+
+      let billerY = y + 18;
+
+      if (invoice.payerName) {
+        doc.text(invoice.payerName, 350, billerY);
+        billerY += 14;
+      }
+
+      if (invoice.payerAddress1) {
+        doc.text(invoice.payerAddress1, 350, billerY);
+        billerY += 14;
+      }
+
+      if (invoice.payerAddress2) {
+        doc.text(invoice.payerAddress2, 350, billerY);
+        billerY += 14;
+      }
+
+      if (invoice.payerAddress3) {
+        doc.text(`${invoice.payerAddress3}`, 350, billerY);
+        billerY += 14;
+      }
+
+      if (invoice.payerContactNos) {
+        doc.text(invoice.payerContactNos, 350, billerY);
+        billerY += 14;
+      }
+
+      // y = drawKeyValueRows({
+      //   startX: 350,
+      //   startY: y + 18,
+      //   labelWidth: 90,
+      //   valueWidth: 220,
+      //   rowHeight: 16,
+
+      //   labelFont: "Helvetica-Bold",
+      //   valueFont: "Helvetica",
+
+      //   rows: [
+      //     {
+      //       label: "Owner",
+      //       value: `: ${invoice.ownerName}`,
+      //     },
+      //     {
+      //       label: "Payer",
+      //       value: `: ${invoice.payerName}`,
+      //     },
+      //     {
+      //       label: "Payer Address",
+      //       value: `: ${invoice.payerAddress1}`,
+      //     },
+      //     {
+      //       label: "",
+      //       value: `: ${invoice.payerAddress2}`,
+      //     },
+      //     {
+      //       label: "",
+      //       value: `: ${invoice.payerAddress3}`,
+      //     },
+      //     {
+      //       label: "Payer Contact Nos",
+      //       value: `: ${invoice.payerContactNos}`,
+      //     },
+      //     {
+      //       label: "Owner Contact Nos",
+      //       value: `: ${invoice.ownerContactNos}`,
+      //     },
+      //   ],
+      // });
+
+      // =====================================
+      // DUE AMOUNT
+      // =====================================
+
+      y = Math.max(companyY, billerY);
+      y += 64;
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(13)
+        .fillColor("#000")
+        .text(
+          `${formatMoney(invoice.balanceAmount) || 0} due by ${
+            invoice.dueDate || "N/A"
+          }`,
+          40,
+          y,
+        );
+
+      // =====================================
+      // STUDENT / BUSINESS UNIT
+      // =====================================
+
+      y += 20;
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .text(invoice.studentName || invoice.businessUnitName || "", 40, y);
+
+      // =====================================
+      // GROUP DATA
+      // =====================================
+
+      const grouped = {};
+
+      const taxTypes = new Set();
+
+      for (const line of invoice.lines || []) {
+        if (line.lineType === "Tax") {
+          taxTypes.add(line.chargeType);
+        }
+      }
+
+      const taxColumns = Array.from(taxTypes);
+
+      const hasDiscount = invoice.lines.some(
+        (l) => Number(l.discountAmount || 0) > 0,
+      );
+
+      let totalOriginalAmount = 0;
+
+      let totalDiscountAmount = 0;
+
+      let totalTaxAmount = 0;
+
+      let grandTotal = 0;
+
+      // ======================================
+      // PROCESS ONLY MAIN CHARGE ROWS
+      // ======================================
+
+      const processed = new Set();
+
+      for (const line of invoice.lines || []) {
+        // Skip tax rows
+        if (line.lineType === "Tax") {
+          continue;
+        }
+
+        const child = line.studentName || "Unknown";
+
+        if (!grouped[child]) {
+          grouped[child] = [];
+        }
+
+        // unique grouping key
+        const key = `${child}-${line.chargeType}`;
+
+        if (processed.has(key)) {
+          continue;
+        }
+
+        processed.add(key);
+
+        // ======================================
+        // FIND RELATED ROWS
+        // ======================================
+
+        const relatedRows = invoice.lines.filter(
+          (r) =>
+            r.studentName === line.studentName &&
+            r.chargeType === line.chargeType,
+        );
+
+        // Main Amount
+        const mainRow =
+          relatedRows.find(
+            (r) => Number(r.discountAmount || 0) === 0 && r.lineType !== "Tax",
+          ) || line;
+
+        // Discount Row
+        const discountRow = relatedRows.find(
+          (r) => Number(r.discountAmount || 0) > 0,
+        );
+
+        // ======================================
+        // TAXES
+        // ======================================
+
+        const rowTaxes = {};
+
+        for (const taxName of taxColumns) {
+          const taxRow = invoice.lines.find(
+            (t) =>
+              t.lineType === "Tax" &&
+              t.chargeType === taxName &&
+              t.studentName === line.studentName &&
+              Number(t.originalAmount || 0) ===
+                Number(mainRow.originalAmount || 0),
+          );
+
+          rowTaxes[taxName] = Number(taxRow?.finalAmount || 0);
+        }
+
+        // ======================================
+        // VALUES
+        // ======================================
+
+        const originalAmount = Number(mainRow.originalAmount || 0);
+
+        const discountAmount = Number(discountRow?.discountAmount || 0);
+
+        const discountPercent = Number(discountRow?.discountPercent || 0);
+
+        const totalTaxForRow = Object.values(rowTaxes).reduce(
+          (a, b) => a + b,
+          0,
+        );
+
+        const finalTotal = originalAmount - discountAmount + totalTaxForRow;
+
+        // ======================================
+        // TOTALS
+        // ======================================
+
+        totalOriginalAmount += originalAmount;
+
+        totalDiscountAmount += discountAmount;
+
+        totalTaxAmount += totalTaxForRow;
+
+        grandTotal += finalTotal;
+
+        // ======================================
+        // PUSH FINAL ROW
+        // ======================================
+
+        grouped[child].push({
+          chargeName: mainRow.chargeType,
+
+          chargeAmount: originalAmount,
+
+          discountPercent,
+
+          discountAmount,
+
+          taxes: rowTaxes,
+
+          total: finalTotal,
+        });
+      }
+      //   const hasDiscount = invoice.lines.some(
+      //     (l) => Number(l.discountAmount || 0) > 0,
+      //   );
+
+      // =====================================
+      // TABLE
+      // =====================================
+
+      y += 30;
+
+      const cols = drawTableHeader(y, hasDiscount, taxColumns);
+
+      y += 28;
+
+      for (const child of Object.keys(grouped)) {
+        doc.font("Helvetica-Bold").fontSize(10).text(child, 40, y);
+
+        y += 18;
+
+        for (const row of grouped[child]) {
+          drawTableRow(y, row, cols, hasDiscount, taxColumns);
+
+          y += 20;
+
+          if (y > 700) {
+            drawFooter(pageNumber);
+
+            doc.addPage();
+
+            pageNumber++;
+
+            drawTopLine();
+
+            y = 60;
+
+            const newCols = drawTableHeader(y, hasDiscount, taxColumns);
+
+            y += 28;
+
+            cols.splice(0, cols.length, ...newCols);
+          }
+        }
+
+        y += 12;
+      }
+
+      // =====================================
+      // TOTALS
+      // =====================================
+
+      y += 20;
+
+      //   doc
+      //     .font("Helvetica-Bold")
+      //     .fontSize(11)
+      //     .text(`Total Amount: ${formatMoney(invoice.totalAmount)}`, 400, y, {
+      //       width: 150,
+      //       align: "right",
+      //     });
+
+      //   y += 20;
+
+      //   doc.text(`Paid Amount: ${formatMoney(invoice.paidAmount)}`, 400, y, {
+      //     width: 150,
+      //     align: "right",
+      //   });
+
+      //   y += 20;
+
+      //   doc.text(`Balance Due: ${formatMoney(invoice.balanceAmount)}`, 400, y, {
+      //     width: 150,
+      //     align: "right",
+      //   });
+
+      const totalsTableWidth = 210;
+
+      const totalsStartX = pageWidth - 40 - totalsTableWidth;
+
+      y = drawKeyValueRows({
+        startX: totalsStartX,
+
+        startY: y,
+
+        labelWidth: 110,
+
+        valueWidth: 100,
+
+        rowHeight: 18,
+
+        labelAlign: "right",
+
+        valueAlign: "right",
+
+        drawTopBorder: true,
+
+        drawRowBorders: true,
+
+        borderColor: "#999",
+
+        rows: [
+          {
+            label: "Total Amount :",
+            value: formatMoney(invoice.totalAmount),
+          },
+
+          {
+            label: "Paid Amount :",
+            value: formatMoney(invoice.paidAmount),
+          },
+
+          {
+            label: "Balance Due :",
+            value: formatMoney(invoice.balanceAmount),
+          },
+        ],
+      });
+
+      // =====================================
+      // PAYMENT SECTION
+      // =====================================
+
+      y += 30;
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .fillColor("#000")
+        .text(`Pay ${formatMoney(invoice.balanceAmount)}`, 40, y);
+
+      y += 20;
+
+      doc
+        .font("Helvetica")
+        .fontSize(10)
+        .fillColor("#000")
+        .text("via bank transfer", 40, y);
+
+      y += 25;
+
+      // =====================================
+      // COMPANY BANK DETAILS
+      // =====================================
+
+      const bank = companyBankDetails || {};
+
+      y = drawKeyValueRows({
+        startX: 40,
+        startY: y,
+        labelWidth: 100,
+        valueWidth: 250,
+        rowHeight: 16,
+
+        rows: [
+          {
+            label: "Bank Name",
+            value: bank.name,
+          },
+          {
+            label: "Account Number",
+            value: bank.accountNumber,
+          },
+          {
+            label: bank.accountNumber2Name || "Alt Account",
+            value: bank.accountNumber2,
+          },
+          {
+            label: "Branch",
+            value: bank.branchName,
+          },
+        ],
+      });
+
+      // =====================================
+      // FOOTER
+      // =====================================
+
+      drawFooter(pageNumber);
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error("PDF ERROR:", err);
+
+    return res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+app.listen(3000, () => {
+  console.log("PDF service running");
+});

@@ -1,0 +1,10 @@
+
+node_modules
+.next
+.env
+*.pdf
+*.zip
+
+public/fonts/**/*.ttf
+!public/fonts/NotoSans/NotoSans-Regular.ttf
+!public/fonts/NotoSans/NotoSans-Bold.ttf
