@@ -28,7 +28,6 @@ async function generatePaymentReceiptPdf(req, res) {
         error: "No payments supplied",
       });
     }
-    const font = new PdfFontManager(doc);
 
     res.setHeader("Content-Type", "application/pdf");
 
@@ -43,6 +42,8 @@ async function generatePaymentReceiptPdf(req, res) {
     });
 
     doc.pipe(res);
+
+    const font = new PdfFontManager(doc);
 
     let pageNumber = 1;
 

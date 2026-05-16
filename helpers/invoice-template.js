@@ -30,8 +30,6 @@ async function generateInvoicePdf(req, res) {
       });
     }
 
-    const font = new PdfFontManager(doc);
-
     res.setHeader("Content-Type", "application/pdf");
 
     res.setHeader("Content-Disposition", "inline; filename=invoices.pdf");
@@ -42,6 +40,8 @@ async function generateInvoicePdf(req, res) {
     });
 
     doc.pipe(res);
+
+    const font = new PdfFontManager(doc);
 
     // =========================================
     // CONFIG
