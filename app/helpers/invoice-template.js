@@ -1,5 +1,11 @@
 const PDFDocument = require("pdfkit");
-const { PdfFontManager } = require("./lib/pdf/pdf-font-manager");
+
+const path = require("path");
+
+const { PdfFontManager } = require(path.join(
+  process.cwd(),
+  "lib/pdf/pdf-font-manager",
+));
 
 const {
   formatMoney,
