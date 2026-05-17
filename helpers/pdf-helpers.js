@@ -167,6 +167,8 @@ function drawKeyValueRows(doc, options) {
 
 function buildResponsiveTableColumns(doc, options) {
   const {
+    fontManager,
+
     startX = 40,
     endX = doc.page.width - 40,
 
@@ -205,6 +207,8 @@ function buildResponsiveTableColumns(doc, options) {
 
 function drawResponsiveTableHeader(doc, options) {
   const {
+    fontManager,
+
     y,
 
     columns = [],
@@ -226,7 +230,12 @@ function drawResponsiveTableHeader(doc, options) {
     firstColumnPercent,
   });
 
-  font.use("bold");
+  if (fontManager) {
+    fontManager.use("bold");
+  } else {
+    doc.font(labelFont);
+  }
+
   doc.fontSize(fontSize).fillColor("#000");
 
   cols.forEach((col, index) => {
@@ -248,6 +257,8 @@ function drawResponsiveTableHeader(doc, options) {
 
 function drawResponsiveTableRow(doc, options) {
   const {
+    fontManager,
+
     y,
 
     cols = [],
@@ -257,7 +268,12 @@ function drawResponsiveTableRow(doc, options) {
     fontSize = 10,
   } = options;
 
-  font.use("regular");
+  if (fontManager) {
+    fontManager.use("regular");
+  } else {
+    doc.font(valueFont);
+  }
+
   doc.fontSize(fontSize).fillColor("#000");
 
   cols.forEach((col, index) => {
