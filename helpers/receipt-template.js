@@ -37,10 +37,19 @@ async function generatePaymentReceiptPdf(req, res) {
       "Content-Disposition",
       "inline; filename=payment-receipts.pdf",
     );
-
     const doc = new PDFDocument({
       margin: 40,
       size: "A4",
+    });
+
+    doc.on("error", (err) => {
+      console.error("PDFKit Error:", err);
+
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
     });
 
     doc.pipe(res);
@@ -336,11 +345,15 @@ async function generatePaymentReceiptPdf(req, res) {
 
     doc.end();
   } catch (err) {
-    console.error(err);
+    console.error("PDF ERROR:", err);
 
-    return res.status(500).json({
-      error: err.message,
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: err.message,
+      });
+    }
+
+    res.end();
   }
 }
 

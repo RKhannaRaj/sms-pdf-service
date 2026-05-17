@@ -35,10 +35,19 @@ async function generateInvoicePdf(req, res) {
     res.setHeader("Content-Type", "application/pdf");
 
     res.setHeader("Content-Disposition", "inline; filename=invoices.pdf");
-
     const doc = new PDFDocument({
       margin: 40,
       size: "A4",
+    });
+
+    doc.on("error", (err) => {
+      console.error("PDFKit Error:", err);
+
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
     });
 
     doc.pipe(res);
@@ -789,9 +798,13 @@ async function generateInvoicePdf(req, res) {
   } catch (err) {
     console.error("PDF ERROR:", err);
 
-    return res.status(500).json({
-      error: err.message,
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: err.message,
+      });
+    }
+
+    res.end();
   }
 }
 
