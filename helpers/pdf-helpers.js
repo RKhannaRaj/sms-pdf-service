@@ -73,7 +73,7 @@ function drawLogo(doc) {
 
 function drawKeyValueRows(doc, options) {
   const {
-    fontManager: font,
+    fontManager,
 
     startX,
     startY,
@@ -123,9 +123,9 @@ function drawKeyValueRows(doc, options) {
     //    doc
     //    .font(labelFont)
     //if (fontManager) {
-    if (font) {
-      font.use("bold");
-    }
+    //if (font) {
+    fontManager?.use("bold");
+    //}
 
     //    fontManager.use("bold");
     // } else {
@@ -140,10 +140,10 @@ function drawKeyValueRows(doc, options) {
       });
 
     //if (fontManager) {
-    if (font) {
-      font.use("regular");
-    }
-    //fontManager.use("regular");
+    // if (font) {
+    //   font.use("regular");
+    // }
+    fontManager?.use("regular");
     // } else {
     //   doc.font(valueFont);
     // }

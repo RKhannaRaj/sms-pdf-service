@@ -233,6 +233,7 @@ async function generateInvoicePdf(req, res) {
             value: invoice.dueDate,
           },
         ],
+        fontManager: font,
       });
       // RIGHT LOGO
       drawLogo(doc);
@@ -573,6 +574,8 @@ async function generateInvoicePdf(req, res) {
         endX: pageWidth - 40,
 
         firstColumnPercent: 0.3,
+
+        fontManager: font,
       });
 
       y += 28;
@@ -616,6 +619,7 @@ async function generateInvoicePdf(req, res) {
             y,
             cols,
             values,
+            fontManager: font,
           });
 
           y += 20;
@@ -642,6 +646,8 @@ async function generateInvoicePdf(req, res) {
               endX: pageWidth - 40,
 
               firstColumnPercent: 0.3,
+
+              fontManager: font,
             });
 
             y += 28;
@@ -722,6 +728,7 @@ async function generateInvoicePdf(req, res) {
             value: formatMoney(invoice.balanceAmount, invoice.currencySymbol),
           },
         ],
+        fontManager: font,
       });
 
       // =====================================
@@ -782,6 +789,7 @@ async function generateInvoicePdf(req, res) {
             value: bank.branchName,
           },
         ],
+        fontManager: font,
       });
 
       // =====================================
