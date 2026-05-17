@@ -73,7 +73,7 @@ function drawLogo(doc) {
 
 function drawKeyValueRows(doc, options) {
   const {
-    fontManager,
+    fontManager: font,
 
     startX,
     startY,
@@ -122,11 +122,11 @@ function drawKeyValueRows(doc, options) {
 
     //    doc
     //    .font(labelFont)
-    if (fontManager) {
-      fontManager.use("bold");
-    } else {
-      doc.font(labelFont);
-    }
+    //if (fontManager) {
+    fontManager.use("bold");
+    // } else {
+    //   doc.font(labelFont);
+    // }
     doc
       .fontSize(fontSize)
       .fillColor(labelColor)
@@ -135,11 +135,11 @@ function drawKeyValueRows(doc, options) {
         align: labelAlign,
       });
 
-    if (fontManager) {
-      fontManager.use("regular");
-    } else {
-      doc.font(valueFont);
-    }
+    //if (fontManager) {
+    fontManager.use("regular");
+    // } else {
+    //   doc.font(valueFont);
+    // }
     doc
       .fontSize(fontSize)
       .fillColor(valueColor)
@@ -205,7 +205,7 @@ function buildResponsiveTableColumns(doc, options) {
 
 function drawResponsiveTableHeader(doc, options) {
   const {
-    fontManager,
+    fontManager: font,
 
     y,
 
@@ -251,7 +251,7 @@ function drawResponsiveTableHeader(doc, options) {
 
 function drawResponsiveTableRow(doc, options) {
   const {
-    fontManager,
+    fontManager: font,
 
     y,
 
