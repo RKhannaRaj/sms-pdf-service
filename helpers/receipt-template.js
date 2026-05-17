@@ -105,6 +105,7 @@ async function generatePaymentReceiptPdf(req, res) {
             value: payment.referenceNo,
           },
         ],
+        fontManager: font,
       });
 
       // =====================================
@@ -259,6 +260,8 @@ async function generatePaymentReceiptPdf(req, res) {
         endX: doc.page.width - 40,
 
         firstColumnPercent: 0.4,
+
+        fontManager: font,
       });
 
       y += 28;
@@ -276,6 +279,7 @@ async function generatePaymentReceiptPdf(req, res) {
 
             formatMoney(alloc.amountAllocated, alloc.currencySymbol),
           ],
+          fontManager: font,
         });
 
         y += 20;
@@ -313,6 +317,7 @@ async function generatePaymentReceiptPdf(req, res) {
             value: formatMoney(payment.amount, payment.currencySymbol),
           },
         ],
+        fontManager: font,
       });
 
       // =====================================
