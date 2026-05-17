@@ -226,7 +226,8 @@ function drawResponsiveTableHeader(doc, options) {
     firstColumnPercent,
   });
 
-  doc.font("Helvetica-Bold").fontSize(fontSize).fillColor("#000");
+  font.use("bold");
+  doc.fontSize(fontSize).fillColor("#000");
 
   cols.forEach((col, index) => {
     doc.text(col.label, col.x, y, {
@@ -256,7 +257,8 @@ function drawResponsiveTableRow(doc, options) {
     fontSize = 10,
   } = options;
 
-  doc.font("Helvetica").fontSize(fontSize).fillColor("#000");
+  font.use("regular");
+  doc.fontSize(fontSize).fillColor("#000");
 
   cols.forEach((col, index) => {
     doc.text(String(values[index] ?? ""), col.x, y, {
