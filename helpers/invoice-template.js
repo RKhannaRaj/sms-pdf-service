@@ -260,8 +260,8 @@ async function generateInvoicePdf(req, res) {
 
       //      doc
       //      .font("Helvetica-Bold")
-      font
-        .use("bold")
+      font.use("bold");
+      doc
         .fontSize(12)
         .fillColor("#000")
         .text(company.name || "Company Name", 40, y);
@@ -354,8 +354,8 @@ async function generateInvoicePdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font
-        .use("bold")
+      font.use("bold");
+      doc
         .fontSize(13)
         .fillColor("#000")
         .text(
@@ -374,8 +374,8 @@ async function generateInvoicePdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font
-        .use("bold")
+      font.use("bold");
+      doc
         .fontSize(12)
         .text(invoice.studentName || invoice.businessUnitName || "", 40, y);
 
@@ -732,8 +732,8 @@ async function generateInvoicePdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font
-        .use("bold")
+      font.use("bold");
+      doc
         .fontSize(12)
         .fillColor("#000")
         .text(
@@ -746,11 +746,8 @@ async function generateInvoicePdf(req, res) {
 
       //doc
       //.font("Helvetica")
-      font
-        .use("regular")
-        .fontSize(10)
-        .fillColor("#000")
-        .text("via bank transfer", 40, y);
+      font.use("regular");
+      doc.fontSize(10).fillColor("#000").text("via bank transfer", 40, y);
 
       y += 25;
 

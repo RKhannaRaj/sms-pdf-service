@@ -123,8 +123,8 @@ async function generatePaymentReceiptPdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font
-        .use("bold")
+      font.use("bold");
+      doc
         .fontSize(12)
         .fillColor("#000")
         .text(company.name || "", 40, y);
@@ -176,11 +176,8 @@ async function generatePaymentReceiptPdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font
-        .use("bold")
-        .fontSize(12)
-        .fillColor("#000")
-        .text("Received From:", 350, y);
+      font.use("bold");
+      doc.fontSize(12).fillColor("#000").text("Received From:", 350, y);
 
       //doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
       font.use("regular");
@@ -222,8 +219,8 @@ async function generatePaymentReceiptPdf(req, res) {
 
       //doc
       //.font("Helvetica-Bold")
-      font
-        .use("bold")
+      font.use("bold");
+      doc
         .fontSize(13)
         .fillColor("#000")
         .text(
