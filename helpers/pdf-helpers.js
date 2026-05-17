@@ -123,7 +123,11 @@ function drawKeyValueRows(doc, options) {
     //    doc
     //    .font(labelFont)
     //if (fontManager) {
-    fontManager.use("bold");
+    if (font) {
+      font.use("bold");
+    }
+
+    //    fontManager.use("bold");
     // } else {
     //   doc.font(labelFont);
     // }
@@ -136,7 +140,10 @@ function drawKeyValueRows(doc, options) {
       });
 
     //if (fontManager) {
-    fontManager.use("regular");
+    if (font) {
+      font.use("regular");
+    }
+    //fontManager.use("regular");
     // } else {
     //   doc.font(valueFont);
     // }
@@ -205,7 +212,7 @@ function buildResponsiveTableColumns(doc, options) {
 
 function drawResponsiveTableHeader(doc, options) {
   const {
-    fontManager: font,
+    fontManager,
 
     y,
 
@@ -228,7 +235,9 @@ function drawResponsiveTableHeader(doc, options) {
     firstColumnPercent,
   });
 
-  fontManager.use("bold");
+  //font?.use("bold");
+
+  fontManager?.use("bold");
 
   doc.fontSize(fontSize).fillColor("#000");
 
@@ -251,7 +260,7 @@ function drawResponsiveTableHeader(doc, options) {
 
 function drawResponsiveTableRow(doc, options) {
   const {
-    fontManager: font,
+    fontManager,
 
     y,
 
@@ -262,7 +271,8 @@ function drawResponsiveTableRow(doc, options) {
     fontSize = 10,
   } = options;
 
-  fontManager.use("regular");
+  fontManager?.use("regular");
+  //font?.use("regular");
 
   doc.fontSize(fontSize).fillColor("#000");
 
