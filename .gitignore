@@ -13,6 +13,8 @@ public/fonts/**/*.ttf
 
 !public/fonts/NotoSans/NotoSans-Regular.ttf
 !public/fonts/NotoSans/NotoSans-Bold.ttf
+!public/fonts/NotoSans/NotoSansDevanagari-Regular.ttf
+
 
 !public/fonts/RobotoBold/Roboto-Bold.ttf
 !public/fonts/dejavu-sans/DejaVuSans.ttf
