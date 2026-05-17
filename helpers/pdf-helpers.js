@@ -167,8 +167,6 @@ function drawKeyValueRows(doc, options) {
 
 function buildResponsiveTableColumns(doc, options) {
   const {
-    fontManager,
-
     startX = 40,
     endX = doc.page.width - 40,
 
@@ -230,11 +228,7 @@ function drawResponsiveTableHeader(doc, options) {
     firstColumnPercent,
   });
 
-  if (fontManager) {
-    fontManager.use("bold");
-  } else {
-    doc.font(labelFont);
-  }
+  fontManager.use("bold");
 
   doc.fontSize(fontSize).fillColor("#000");
 
@@ -268,11 +262,7 @@ function drawResponsiveTableRow(doc, options) {
     fontSize = 10,
   } = options;
 
-  if (fontManager) {
-    fontManager.use("regular");
-  } else {
-    doc.font(valueFont);
-  }
+  fontManager.use("regular");
 
   doc.fontSize(fontSize).fillColor("#000");
 
