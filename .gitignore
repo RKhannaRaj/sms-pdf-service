@@ -21,5 +21,6 @@ public/fonts/**/*.ttf
 
 !public/fonts/inter/Inter-Regular.ttf
 !public/fonts/inter/Inter-Bold.ttf
+!public/fonts/inter/Inter-Thin.ttf
 
 
