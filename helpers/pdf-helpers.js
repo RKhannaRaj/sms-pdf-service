@@ -44,15 +44,10 @@ function drawFooter(doc, pageNumber) {
   doc
     .fontSize(9)
     .fillColor("#666")
-    .text(
-      `Print Date and Time: ${printTimestamp}`,
-      pageWidth - 250,
-      footerY - 18,
-      {
-        width: 210,
-        align: "right",
-      },
-    );
+    .text(`Printed on: ${printTimestamp}`, pageWidth - 250, footerY - 18, {
+      width: 210,
+      align: "right",
+    });
 
   // Footer separator line
 
