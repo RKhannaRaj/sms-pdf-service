@@ -232,20 +232,32 @@ async function generateInvoicePdf(req, res) {
             label: "Due Date",
             value: invoice.dueDate,
           },
+
+          // {
+          //   label: "Invoice Status",
+          //   value: invoice.status,
+          // },
         ],
         fontManager: font,
       });
       // RIGHT LOGO
       drawLogo(doc);
-      // const logoWidth = 150;
 
-      // const logoStartX = pageWidth - 40 - logoWidth;
+      // =====================================
+      // INVOICE STATUS (RIGHT TOP)
+      // =====================================
 
-      // if (fs.existsSync(logoPath)) {
-      //   doc.image(logoPath, logoStartX, 25, {
-      //     width: logoWidth,
-      //   });
-      // }
+      if (invoice.status === "CANCELLED" || invoice.status === "Cancelled") {
+        font.use("bold");
+
+        doc
+          .fontSize(10)
+          .fillColor("#c00000")
+          .text("Invoice Status: Cancelled", pageWidth - 220, 125, {
+            width: 180,
+            align: "right",
+          });
+      }
 
       // =====================================
       // COMPANY + BILLER SECTION
@@ -259,8 +271,6 @@ async function generateInvoicePdf(req, res) {
 
       const company = companyDetails || {};
 
-      //      doc
-      //      .font("Helvetica-Bold")
       font.use("bold");
       doc
         .fontSize(12)
