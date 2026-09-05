@@ -63,6 +63,9 @@ async function generatePaymentReceiptPdf(req, res) {
 
       const isRefund = payment.paymentType === "REFUND";
 
+      console.log("Receipt Payment.PaymentType", payment.paymentType);
+      console.log("Receipt isRefund", isRefund);
+
       if (p > 0) {
         doc.addPage();
         pageNumber++;
