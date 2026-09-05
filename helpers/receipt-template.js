@@ -61,6 +61,8 @@ async function generatePaymentReceiptPdf(req, res) {
     for (let p = 0; p < payments.length; p++) {
       const payment = payments[p];
 
+      const isRefund = payment.paymentType === "REFUND";
+
       if (p > 0) {
         doc.addPage();
         pageNumber++;
@@ -77,7 +79,12 @@ async function generatePaymentReceiptPdf(req, res) {
       //doc
       //.font("Helvetica-Bold")
       font.use("bold");
-      doc.fontSize(28).fillColor("#000").text("Receipt", 40, y);
+      // doc.fontSize(28).fillColor("#000").text("Receipt", 40, y);
+
+      doc
+        .fontSize(28)
+        .fillColor("#000")
+        .text(isRefund ? "Refund Receipt" : "Receipt", 40, y);
 
       y += 45;
 
@@ -178,7 +185,12 @@ async function generatePaymentReceiptPdf(req, res) {
       //doc
       //.font("Helvetica-Bold")
       font.use("bold");
-      doc.fontSize(12).fillColor("#000").text("Received From:", 350, y);
+      // doc.fontSize(12).fillColor("#000").text("Received From:", 350, y);
+
+      doc
+        .fontSize(12)
+        .fillColor("#000")
+        .text(isRefund ? "Refunded To:" : "Received From:", 350, y);
 
       //doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
       font.use("regular");
@@ -225,13 +237,27 @@ async function generatePaymentReceiptPdf(req, res) {
         .fontSize(13)
         .fillColor("#000")
         .text(
-          `Received with thanks the sum of ${formatMoney(
-            payment.amount,
-            payment.currencySymbol,
-          )}`,
+          isRefund
+            ? `Refunded the sum of ${formatMoney(
+                payment.amount,
+                payment.currencySymbol,
+              )}`
+            : `Received with thanks the sum of ${formatMoney(
+                payment.amount,
+                payment.currencySymbol,
+              )}`,
           40,
           y,
         );
+
+      // .text(
+      //   `Received with thanks the sum of ${formatMoney(
+      //     payment.amount,
+      //     payment.currencySymbol,
+      //   )}`,
+      //   40,
+      //   y,
+      // );
 
       // =====================================
       // ALLOCATION TABLE
@@ -313,7 +339,8 @@ async function generatePaymentReceiptPdf(req, res) {
 
         rows: [
           {
-            label: "Total Received :",
+            // label: "Total Received :",
+            label: isRefund ? "Total Refunded :" : "Total Received :",
             value: formatMoney(payment.amount, payment.currencySymbol),
           },
         ],
