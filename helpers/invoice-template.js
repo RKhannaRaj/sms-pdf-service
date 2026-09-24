@@ -677,7 +677,7 @@ async function generateInvoicePdf(req, res) {
       )}`;
       font.use("bold");
       doc.fontSize(12).fillColor("#000");
-      const separatorWidth = doc.widthOfString(payText) + 30;
+      const separatorWidth = doc.widthOfString(payText) + 60;
       doc
         .save()
         .lineWidth(0.75)
