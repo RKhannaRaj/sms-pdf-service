@@ -667,19 +667,29 @@ async function generateInvoicePdf(req, res) {
         bank.accountNumber2,
         bank.branchName,
       ].filter((value) => value || value === 0).length;
-      y = ensureSpace(y, 45 + bankRowCount * 16);
+      const separatorGap = 8;
+      y = ensureSpace(y, separatorGap + 45 + bankRowCount * 16);
 
-      //doc
-      //.font("Helvetica-Bold")
+      const payX = 40;
+      const payText = `Pay ${formatMoney(
+        invoice.balanceAmount,
+        invoice.currencySymbol,
+      )}`;
       font.use("bold");
+      doc.fontSize(12).fillColor("#000");
+      const separatorWidth = doc.widthOfString(payText) + 30;
       doc
-        .fontSize(12)
-        .fillColor("#000")
-        .text(
-          `Pay ${formatMoney(invoice.balanceAmount, invoice.currencySymbol)}`,
-          40,
-          y,
-        );
+        .save()
+        .lineWidth(0.75)
+        .strokeColor("#999")
+        .dash(4, { space: 3 })
+        .moveTo(payX, y)
+        .lineTo(payX + separatorWidth, y)
+        .stroke()
+        .undash()
+        .restore();
+      y += separatorGap;
+      doc.text(payText, payX, y);
 
       y += 20;
 

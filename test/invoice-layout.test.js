@@ -102,13 +102,33 @@ test("an unbroken multi-page contact number continues without truncation", () =>
 async function renderInvoice(invoice, invoiceCount = 1) {
   const lines = [];
   const images = [];
+  const separators = [];
   const pages = new Set();
   const originalImage = PDFDocument.prototype.image;
   const originalLine = PDFDocument.prototype._line;
   const originalLineWidth = PDFDocument.prototype.lineWidth;
   const originalMoveTo = PDFDocument.prototype.moveTo;
   const originalStroke = PDFDocument.prototype.stroke;
+  const originalLineTo = PDFDocument.prototype.lineTo;
+  const originalSave = PDFDocument.prototype.save;
+  const originalRestore = PDFDocument.prototype.restore;
   const strokes = new WeakMap();
+  const savedStrokes = new WeakMap();
+  PDFDocument.prototype.save = function () {
+    const stack = savedStrokes.get(this) || [];
+    stack.push({ ...strokes.get(this) });
+    savedStrokes.set(this, stack);
+    return originalSave.call(this);
+  };
+  PDFDocument.prototype.restore = function () {
+    const state = savedStrokes.get(this)?.pop();
+    if (state) strokes.set(this, state);
+    return originalRestore.call(this);
+  };
+  PDFDocument.prototype.lineTo = function (x, y) {
+    strokes.set(this, { ...strokes.get(this), endX: x, endY: y });
+    return originalLineTo.call(this, x, y);
+  };
   PDFDocument.prototype.image = function (source, x, y, options) {
     images.push({ source, x, y, options, page: this.page });
     return originalImage.call(this, source, x, y, options);
@@ -118,11 +138,12 @@ async function renderInvoice(invoice, invoiceCount = 1) {
     return originalLineWidth.call(this, width);
   };
   PDFDocument.prototype.moveTo = function (x, y) {
-    strokes.set(this, { ...strokes.get(this), y });
+    strokes.set(this, { ...strokes.get(this), x, y });
     return originalMoveTo.call(this, x, y);
   };
   PDFDocument.prototype.stroke = function (...args) {
     const state = strokes.get(this);
+    if (state?.width === 0.75) separators.push({ ...state, page: this.page });
     if (state?.y === this.page.height - 65) {
       assert.equal(state.width, 1, "footer must not inherit the thick header stroke");
     }
@@ -130,7 +151,7 @@ async function renderInvoice(invoice, invoiceCount = 1) {
   };
   PDFDocument.prototype._line = function (text, options, wrapper) {
     pages.add(this.page);
-    lines.push({ text, x: this.x, y: this.y, height: this.currentLineHeight(true), page: this.page });
+    lines.push({ text, x: this.x, y: this.y, width: this.widthOfString(text), height: this.currentLineHeight(true), page: this.page });
     return originalLine.call(this, text, options, wrapper);
   };
   const chunks = [];
@@ -151,6 +172,9 @@ async function renderInvoice(invoice, invoiceCount = 1) {
     PDFDocument.prototype.moveTo = originalMoveTo;
     PDFDocument.prototype.stroke = originalStroke;
     PDFDocument.prototype.image = originalImage;
+    PDFDocument.prototype.lineTo = originalLineTo;
+    PDFDocument.prototype.save = originalSave;
+    PDFDocument.prototype.restore = originalRestore;
   }
   assert.ok(Buffer.concat(chunks).subarray(0, 5).equals(Buffer.from("%PDF-")));
   const bodyLines = lines.filter((line) => !line.text.startsWith("Printed on:") && !line.text.startsWith("This is a system-generated"));
@@ -162,7 +186,7 @@ async function renderInvoice(invoice, invoiceCount = 1) {
     assert.equal(lines.filter((line) => line.page === page && line.text.startsWith("Printed on:")).length, 1,
       "every page must have exactly one footer");
   }
-  return { lines, pages, images };
+  return { lines, pages, images, separators };
 }
 
 function assertHeaders(result, invoicesByPage) {
@@ -254,7 +278,35 @@ test("totals and bank page breaks start beneath repeated identity", async () => 
     const lastPage = Array.from(result.pages).at(-1);
     const firstBody = result.lines.find((line) => line.page === lastPage && line.y >= 189);
     assert.equal(firstBody.text, firstBodyText);
-    assert.equal(firstBody.y, 189);
+    assert.equal(firstBody.y, firstBodyText.startsWith("Pay ") ? 197 : 189);
+  }
+});
+
+test("payment separator follows Pay width and stays with payment on page breaks", async () => {
+  for (const count of [1, 11]) {
+    for (const balanceAmount of [100, 1234567.89]) {
+      const invoice = tableInvoice(count, { currencySymbol: "£", balanceAmount });
+      const result = await renderInvoice(invoice);
+      assertHeaders(result, Array(result.pages.size).fill(invoice));
+      assert.equal(result.separators.length, 1);
+      const separator = result.separators[0];
+      const pay = result.lines.find((line) => line.text.startsWith("Pay £"));
+      const transfer = result.lines.find((line) => line.text === "via bank transfer");
+      const bank = result.lines.find((line) => line.text === "Bank Name");
+      assert.equal(separator.page, pay.page);
+      assert.equal(pay.page, transfer.page);
+      assert.equal(pay.page, bank.page);
+      assert.equal(separator.x, pay.x);
+      assert.equal(separator.y, pay.y - 8);
+      assert.equal(separator.endY, separator.y);
+      assert.ok(Math.abs(separator.endX - separator.x - pay.width - 30) < 0.001);
+      assert.ok(separator.endX < pay.page.width - 40);
+      if (count === 11) {
+        assert.equal(result.pages.size, 2);
+        assert.equal(separator.page, Array.from(result.pages)[1]);
+        assert.equal(separator.y, 189);
+      }
+    }
   }
 });
 
