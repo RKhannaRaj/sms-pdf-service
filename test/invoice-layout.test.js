@@ -41,7 +41,7 @@ function renderBill(invoice, startY = 189) {
   const layout = measureBillTo(doc, font, invoice);
   const bottom = doc.page.height - 100;
   const endY = drawBillTo(doc, font, layout, {
-    y: startY, bottom, pageTop: 60, nextPage: () => doc.addPage(),
+    y: startY, bottom, pageTop: 60, nextPage: () => { doc.addPage(); return 60; },
   });
   doc.end();
   for (const call of calls) {
@@ -101,12 +101,18 @@ test("an unbroken multi-page contact number continues without truncation", () =>
 
 async function renderInvoice(invoice, invoiceCount = 1) {
   const lines = [];
+  const images = [];
   const pages = new Set();
+  const originalImage = PDFDocument.prototype.image;
   const originalLine = PDFDocument.prototype._line;
   const originalLineWidth = PDFDocument.prototype.lineWidth;
   const originalMoveTo = PDFDocument.prototype.moveTo;
   const originalStroke = PDFDocument.prototype.stroke;
   const strokes = new WeakMap();
+  PDFDocument.prototype.image = function (source, x, y, options) {
+    images.push({ source, x, y, options, page: this.page });
+    return originalImage.call(this, source, x, y, options);
+  };
   PDFDocument.prototype.lineWidth = function (width) {
     strokes.set(this, { ...strokes.get(this), width });
     return originalLineWidth.call(this, width);
@@ -134,7 +140,7 @@ async function renderInvoice(invoice, invoiceCount = 1) {
   res.json = (error) => { throw new Error(JSON.stringify(error)); };
   try {
     await generateInvoicePdf({ body: {
-      invoices: Array.from({ length: invoiceCount }, () => invoice),
+      invoices: Array.isArray(invoice) ? invoice : Array.from({ length: invoiceCount }, () => invoice),
       companyDetails: { name: "Example Company", addressLine1: "Company Road" },
       companyBankDetails: { name: "Example Bank", accountNumber: "12345", accountNumber2: "67890", branchName: "Example Branch" },
     } }, res);
@@ -144,6 +150,7 @@ async function renderInvoice(invoice, invoiceCount = 1) {
     PDFDocument.prototype.lineWidth = originalLineWidth;
     PDFDocument.prototype.moveTo = originalMoveTo;
     PDFDocument.prototype.stroke = originalStroke;
+    PDFDocument.prototype.image = originalImage;
   }
   assert.ok(Buffer.concat(chunks).subarray(0, 5).equals(Buffer.from("%PDF-")));
   const bodyLines = lines.filter((line) => !line.text.startsWith("Printed on:") && !line.text.startsWith("This is a system-generated"));
@@ -155,8 +162,118 @@ async function renderInvoice(invoice, invoiceCount = 1) {
     assert.equal(lines.filter((line) => line.page === page && line.text.startsWith("Printed on:")).length, 1,
       "every page must have exactly one footer");
   }
-  return { lines, pages };
+  return { lines, pages, images };
 }
+
+function assertHeaders(result, invoicesByPage) {
+  const pages = Array.from(result.pages);
+  assert.equal(pages.length, invoicesByPage.length);
+  for (const [index, page] of pages.entries()) {
+    const invoice = invoicesByPage[index];
+    const pageLines = result.lines.filter((line) => line.page === page);
+    const expectedHeader = [
+      ["Invoice", 40, 40],
+      ["Invoice No", 40, 85], [invoice.invoiceNumber, 130, 85],
+      ["Date of Issue", 40, 103], [invoice.invoiceDate, 130, 103],
+      ["Due Date", 40, 121], [invoice.dueDate, 130, 121],
+    ];
+    if (["CANCELLED", "Cancelled"].includes(invoice.status)) {
+      expectedHeader.push(["Invoice Status: Cancelled", page.width - 220, 125]);
+    }
+    const headerLines = pageLines.filter((line) => line.y < 189);
+    assert.deepEqual(headerLines.map(({ text, x, y }) => [text, x, y]), expectedHeader,
+      "each page must repeat only its current invoice's identity at the original positions");
+    assert.equal(pageLines.filter((line) => line.text === "Invoice").length, 1);
+    const logos = result.images.filter((image) => image.page === page);
+    assert.equal(logos.length, 1, "each page must have one logo");
+    assert.equal(logos[0].source, result.images[0].source);
+    assert.equal(logos[0].x, page.width - 40 - 150);
+    assert.equal(logos[0].y, 23);
+    assert.deepEqual(logos[0].options, { width: 150 });
+    const headerBottom = Math.max(...headerLines.map((line) => line.y + line.height));
+    for (const line of pageLines.filter((line) => !headerLines.includes(line))) {
+      assert.ok(line.y >= headerBottom + 45, "body must start below the repeated header");
+    }
+  }
+}
+
+function tableInvoice(count, extra = {}) {
+  return {
+    ...baseInvoice,
+    lines: Array.from({ length: count }, (_, index) => ({
+      studentName: "Student", chargeType: `Charge ${index}`, originalAmount: 10, finalAmount: 10,
+    })),
+    ...extra,
+  };
+}
+
+test("one-page invoice renders its identity and logo exactly once", async () => {
+  const result = await renderInvoice(baseInvoice);
+  assertHeaders(result, [baseInvoice]);
+});
+
+test("two-page table repeats invoice identity, logo and table columns", async () => {
+  const invoice = tableInvoice(20);
+  const result = await renderInvoice(invoice);
+  assertHeaders(result, [invoice, invoice]);
+  for (const page of result.pages) {
+    assert.equal(result.lines.filter((line) => line.page === page && line.text === "Charge Name").length, 1);
+  }
+  for (let index = 0; index < 20; index++) {
+    assert.equal(result.lines.filter((line) => line.text === `Charge ${index}`).length, 1,
+      "rendered table rows must not repeat");
+  }
+  for (const text of ["Example Company", "Company Road", "Bill To:", "Student", "Total Amount :", "Example Bank"]) {
+    assert.equal(result.lines.filter((line) => line.text === text).length, 1, `${text} must not repeat with the header`);
+  }
+  assert.equal(result.lines.filter((line) => line.text.includes("due by")).length, 1);
+});
+
+test("three-or-more-page table repeats the same invoice on every page", async () => {
+  const invoice = tableInvoice(65);
+  const result = await renderInvoice(invoice);
+  assert.ok(result.pages.size >= 3);
+  assertHeaders(result, Array(result.pages.size).fill(invoice));
+});
+
+test("Bill To continuation starts beneath repeated invoice identity", async () => {
+  const invoice = { ...baseInvoice, payerAddress1: longAddress.repeat(65) };
+  const result = await renderInvoice(invoice);
+  assertHeaders(result, Array(result.pages.size).fill(invoice));
+  const billHeadings = result.lines.filter((line) => line.text === "Bill To:");
+  assert.ok(billHeadings.length > 1);
+  for (const line of billHeadings) assert.equal(line.y, 189);
+  assert.equal(result.lines.filter((line) => line.text === "Example Company").length, 1);
+});
+
+test("totals and bank page breaks start beneath repeated identity", async () => {
+  for (const [count, firstBodyText] of [[15, "Total Amount :"], [11, "Pay ₹ 100.00"]]) {
+    const invoice = tableInvoice(count);
+    const result = await renderInvoice(invoice);
+    assertHeaders(result, [invoice, invoice]);
+    const lastPage = Array.from(result.pages).at(-1);
+    const firstBody = result.lines.find((line) => line.page === lastPage && line.y >= 189);
+    assert.equal(firstBody.text, firstBodyText);
+    assert.equal(firstBody.y, 189);
+  }
+});
+
+test("multiple invoices retain their own identity, dates and cancellation status", async () => {
+  const first = tableInvoice(20, { invoiceNumber: "INV-A", status: "CANCELLED" });
+  const second = tableInvoice(20, {
+    invoiceNumber: "INV-B", invoiceDate: "25 Sep 2026", dueDate: "02 Oct 2026",
+  });
+  const result = await renderInvoice([first, second]);
+  assertHeaders(result, [first, first, second, second]);
+});
+
+test("both supported Cancelled spellings repeat consistently", async () => {
+  for (const status of ["CANCELLED", "Cancelled"]) {
+    const invoice = tableInvoice(20, { status });
+    const result = await renderInvoice(invoice);
+    assertHeaders(result, [invoice, invoice]);
+  }
+});
 
 test("following invoice content clears a wrapped Bill To block", async () => {
   const { lines } = await renderInvoice({ ...baseInvoice, payerAddress1: longAddress, payerAddress2: longAddress });

@@ -69,7 +69,7 @@ function drawBillTo(doc, font, layout, { y, bottom, pageTop, nextPage }) {
     bodyStyle();
   };
   const continuePage = () => {
-    nextPage();
+    pageTop = nextPage();
     y = pageTop;
     heading();
   };

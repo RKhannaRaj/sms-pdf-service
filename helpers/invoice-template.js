@@ -9,12 +9,11 @@ const path = require("path");
 
 const { PdfFontManager } = require("../lib/pdf/font-manager");
 const { measureBillTo, drawBillTo } = require("./invoice-bill-to");
+const { drawInvoicePageHeader } = require("./invoice-page-header");
 
 const {
   formatMoney,
-  drawTopLine,
   drawFooter,
-  drawLogo,
   drawKeyValueRows,
   LIGHT_GRAY,
   drawResponsiveTableHeader,
@@ -186,22 +185,6 @@ async function generateInvoicePdf(req, res) {
     let pageNumber = 1;
     // Keep body text above the footer timestamp as well as the separator.
     const contentBottom = pageHeight - 100;
-    const pageTop = 60;
-    const nextPage = () => {
-      // A break before the table must not inherit the 12pt top-line stroke.
-      doc.lineWidth(1);
-      drawFooter(doc, pageNumber);
-      doc.addPage();
-      pageNumber++;
-      drawTopLine(doc);
-      doc.lineWidth(1);
-    };
-    const ensureSpace = (startY, height) => {
-      if (startY + height <= contentBottom) return startY;
-      nextPage();
-      return pageTop;
-    };
-
     for (let invIndex = 0; invIndex < invoices.length; invIndex++) {
       const invoice = invoices[invIndex];
 
@@ -210,78 +193,25 @@ async function generateInvoicePdf(req, res) {
         pageNumber++;
       }
 
-      drawTopLine(doc);
+      const pageTop = drawInvoicePageHeader(doc, invoice, font);
+      let y = pageTop;
 
-      // =====================================
-      // HEADER SECTION
-      // =====================================
+      // These closures belong to this invoice, including all continuation pages.
+      const nextPage = () => {
+        doc.lineWidth(1);
+        drawFooter(doc, pageNumber);
+        doc.addPage();
+        pageNumber++;
+        return drawInvoicePageHeader(doc, invoice, font);
+      };
+      const ensureSpace = (startY, height) => {
+        // An oversized block already at the body start must be split in place.
+        if (startY + height <= contentBottom || startY === pageTop)
+          return startY;
+        return nextPage();
+      };
 
-      let y = 40;
-
-      // LEFT
-
-      // doc
-      //   //.font("Helvetica-Bold")
-      font.use("bold");
-      doc.fontSize(28).fillColor("#000").text("Invoice", 40, y);
-
-      y += 45;
-
-      font.use("regular");
-      doc.fontSize(10).fillColor("#000");
-
-      y = drawKeyValueRows(doc, {
-        startX: 40,
-        startY: y,
-        labelWidth: 90,
-        valueWidth: 180,
-        rowHeight: 18,
-
-        rows: [
-          {
-            label: "Invoice No",
-            value: invoice.invoiceNumber,
-          },
-          {
-            label: "Date of Issue",
-            value: invoice.invoiceDate,
-          },
-          {
-            label: "Due Date",
-            value: invoice.dueDate,
-          },
-
-          // {
-          //   label: "Invoice Status",
-          //   value: invoice.status,
-          // },
-        ],
-        fontManager: font,
-      });
-      // RIGHT LOGO
-      drawLogo(doc);
-
-      // =====================================
-      // INVOICE STATUS (RIGHT TOP)
-      // =====================================
-
-      if (invoice.status === "CANCELLED" || invoice.status === "Cancelled") {
-        font.use("bold");
-
-        doc
-          .fontSize(10)
-          .fillColor("#c00000")
-          .text("Invoice Status: Cancelled", pageWidth - 220, 125, {
-            width: 180,
-            align: "right",
-          });
-      }
-
-      // =====================================
       // COMPANY + BILLER SECTION
-      // =====================================
-
-      y += 50;
 
       const billToLayout = measureBillTo(doc, font, invoice);
       // Move both columns together when the Bill To block needs a fresh page.
@@ -588,9 +518,9 @@ async function generateInvoicePdf(req, res) {
       y += 28;
 
       const continueTable = () => {
-        nextPage();
+        y = nextPage();
         const newCols = drawResponsiveTableHeader(doc, {
-          y: pageTop,
+          y,
           columns: tableColumns,
           startX: 40,
           endX: pageWidth - 40,
@@ -598,7 +528,7 @@ async function generateInvoicePdf(req, res) {
           fontManager: font,
         });
         cols.splice(0, cols.length, ...newCols);
-        y = pageTop + 28;
+        y += 28;
       };
 
       for (const child of Object.keys(grouped)) {
