@@ -8,6 +8,7 @@ const path = require("path");
 // ));
 
 const { PdfFontManager } = require("../lib/pdf/font-manager");
+const { measureBillTo, drawBillTo } = require("./invoice-bill-to");
 
 const {
   formatMoney,
@@ -183,6 +184,23 @@ async function generateInvoicePdf(req, res) {
     // =========================================
 
     let pageNumber = 1;
+    // Keep body text above the footer timestamp as well as the separator.
+    const contentBottom = pageHeight - 100;
+    const pageTop = 60;
+    const nextPage = () => {
+      // A break before the table must not inherit the 12pt top-line stroke.
+      doc.lineWidth(1);
+      drawFooter(doc, pageNumber);
+      doc.addPage();
+      pageNumber++;
+      drawTopLine(doc);
+      doc.lineWidth(1);
+    };
+    const ensureSpace = (startY, height) => {
+      if (startY + height <= contentBottom) return startY;
+      nextPage();
+      return pageTop;
+    };
 
     for (let invIndex = 0; invIndex < invoices.length; invIndex++) {
       const invoice = invoices[invIndex];
@@ -265,6 +283,11 @@ async function generateInvoicePdf(req, res) {
 
       y += 50;
 
+      const billToLayout = measureBillTo(doc, font, invoice);
+      // Move both columns together when the Bill To block needs a fresh page.
+      // Oversized blocks are continued explicitly by drawBillTo.
+      y = ensureSpace(y, billToLayout.height);
+
       // =====================================
       // COMPANY DETAILS
       // =====================================
@@ -319,49 +342,23 @@ async function generateInvoicePdf(req, res) {
       }
 
       // Biller Right
-
-      //doc
-      //.font("Helvetica-Bold")
-      font.use("bold");
-      doc.fontSize(12).fillColor("#000").text("Bill To:", 350, y);
-
-      //doc.font("Helvetica").fontSize(10).fillColor(LIGHT_GRAY);
-      font.use("regular");
-      doc.fontSize(10).fillColor(LIGHT_GRAY);
-
-      let billerY = y + 18;
-
-      if (invoice.payerName) {
-        doc.text(invoice.payerName, 350, billerY);
-        billerY += 14;
-      }
-
-      if (invoice.payerAddress1) {
-        doc.text(invoice.payerAddress1, 350, billerY);
-        billerY += 14;
-      }
-
-      if (invoice.payerAddress2) {
-        doc.text(invoice.payerAddress2, 350, billerY);
-        billerY += 14;
-      }
-
-      if (invoice.payerAddress3) {
-        doc.text(`${invoice.payerAddress3}`, 350, billerY);
-        billerY += 14;
-      }
-
-      if (invoice.payerContactNos) {
-        doc.text(invoice.payerContactNos, 350, billerY);
-        billerY += 14;
-      }
+      const companyPage = doc.page;
+      const billerY = drawBillTo(doc, font, billToLayout, {
+        y,
+        bottom: contentBottom,
+        pageTop,
+        nextPage,
+      });
 
       // =====================================
       // DUE AMOUNT
       // =====================================
 
-      y = Math.max(companyY, billerY);
+      y = doc.page === companyPage ? Math.max(companyY, billerY) : billerY;
       y += 65;
+      // Keep the due amount, student/BU heading and start of the table clear
+      // of the footer, including when Bill To continued onto another page.
+      y = ensureSpace(y, 130);
 
       //doc
       //.font("Helvetica-Bold")
@@ -590,7 +587,22 @@ async function generateInvoicePdf(req, res) {
 
       y += 28;
 
+      const continueTable = () => {
+        nextPage();
+        const newCols = drawResponsiveTableHeader(doc, {
+          y: pageTop,
+          columns: tableColumns,
+          startX: 40,
+          endX: pageWidth - 40,
+          firstColumnPercent: 0.3,
+          fontManager: font,
+        });
+        cols.splice(0, cols.length, ...newCols);
+        y = pageTop + 28;
+      };
+
       for (const child of Object.keys(grouped)) {
+        if (y + 38 > contentBottom) continueTable();
         //doc.font("Helvetica-Bold")
         font.use("bold");
         doc.fontSize(10).text(child, 40, y);
@@ -598,6 +610,7 @@ async function generateInvoicePdf(req, res) {
         y += 18;
 
         for (const row of grouped[child]) {
+          if (y + 20 > contentBottom) continueTable();
           //drawTableRow(y, row, cols, hasDiscount, taxColumns);
           const values = [];
 
@@ -633,37 +646,6 @@ async function generateInvoicePdf(req, res) {
           });
 
           y += 20;
-
-          if (y > 700) {
-            drawFooter(doc, pageNumber);
-
-            doc.addPage();
-
-            pageNumber++;
-
-            drawTopLine(doc);
-
-            y = 60;
-            // page break - redraw header
-
-            //const newCols = drawTableHeader(y, hasDiscount, taxColumns);
-            const newCols = drawResponsiveTableHeader(doc, {
-              y,
-
-              columns: tableColumns,
-
-              startX: 40,
-              endX: pageWidth - 40,
-
-              firstColumnPercent: 0.3,
-
-              fontManager: font,
-            });
-
-            y += 28;
-
-            cols.splice(0, cols.length, ...newCols);
-          }
         }
 
         y += 12;
@@ -701,6 +683,7 @@ async function generateInvoicePdf(req, res) {
 
       const totalsStartX = pageWidth - 40 - totalsTableWidth;
 
+      y = ensureSpace(y, 3 * 18);
       y = drawKeyValueRows(doc, {
         startX: totalsStartX,
 
@@ -747,6 +730,15 @@ async function generateInvoicePdf(req, res) {
 
       y += 30;
 
+      const bank = companyBankDetails || {};
+      const bankRowCount = [
+        bank.name,
+        bank.accountNumber,
+        bank.accountNumber2,
+        bank.branchName,
+      ].filter((value) => value || value === 0).length;
+      y = ensureSpace(y, 45 + bankRowCount * 16);
+
       //doc
       //.font("Helvetica-Bold")
       font.use("bold");
@@ -771,8 +763,6 @@ async function generateInvoicePdf(req, res) {
       // =====================================
       // COMPANY BANK DETAILS
       // =====================================
-
-      const bank = companyBankDetails || {};
 
       y = drawKeyValueRows(doc, {
         startX: 40,
