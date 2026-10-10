@@ -364,7 +364,13 @@ async function generateInvoicePdf(req, res) {
         }
 
         // unique grouping key
-        const key = `${child}-${line.chargeType}`;
+        const key = [
+          line.studentName || "Unknown",
+          line.businessUnitId || "",
+          line.chargeType || "",
+          line.billingStart || line.usageStart || "",
+          line.billingEnd || line.usageEnd || "",
+        ].join("|");
 
         if (processed.has(key)) {
           continue;
@@ -376,11 +382,15 @@ async function generateInvoicePdf(req, res) {
         // FIND RELATED ROWS
         // ======================================
 
-        const relatedRows = invoice.lines.filter(
-          (r) =>
-            r.studentName === line.studentName &&
-            r.chargeType === line.chargeType,
-        );
+        const matchesGroup = (r) =>
+          [
+            r.studentName || "Unknown",
+            r.businessUnitId || "",
+            r.chargeType || "",
+            r.billingStart || r.usageStart || "",
+            r.billingEnd || r.usageEnd || "",
+          ].join("|") === key;
+        const relatedRows = invoice.lines.filter(matchesGroup);
 
         // Main Amount
         const mainRow =
@@ -389,7 +399,7 @@ async function generateInvoicePdf(req, res) {
           ) || line;
 
         // Discount Row
-        const discountRow = relatedRows.find(
+        const discountRows = relatedRows.filter(
           (r) => Number(r.discountAmount || 0) > 0,
         );
 
@@ -404,7 +414,7 @@ async function generateInvoicePdf(req, res) {
             (t) =>
               t.lineType === "Tax" &&
               t.chargeType === taxName &&
-              t.studentName === line.studentName &&
+              matchesGroup(t) &&
               Number(t.originalAmount || 0) ===
                 Number(mainRow.originalAmount || 0),
           );
@@ -418,16 +428,30 @@ async function generateInvoicePdf(req, res) {
 
         const originalAmount = Number(mainRow.originalAmount || 0);
 
-        const discountAmount = Number(discountRow?.discountAmount || 0);
+        const discountAmount = discountRows.reduce(
+          (total, row) => total + Number(row.discountAmount || 0),
+          0,
+        );
 
-        const discountPercent = Number(discountRow?.discountPercent || 0);
+        const discountPercent = [
+          ...new Set(
+            discountRows
+              .map((row) => Number(row.discountPercent || 0))
+              .filter((percent) => percent > 0),
+          ),
+        ]
+          .map((percent) => `${percent}%`)
+          .join(" + ");
 
         const totalTaxForRow = Object.values(rowTaxes).reduce(
           (a, b) => a + b,
           0,
         );
 
-        const finalTotal = originalAmount - discountAmount + totalTaxForRow;
+        // CHARGE.finalAmount is already net of persisted discount lines. Do not
+        // deduct the separately displayed discounts from it a second time.
+        const finalTotal =
+          Number(mainRow.finalAmount ?? mainRow.amount ?? 0) + totalTaxForRow;
 
         // ======================================
         // TOTALS
@@ -457,6 +481,7 @@ async function generateInvoicePdf(req, res) {
           taxes: rowTaxes,
 
           total: finalTotal,
+          currencySymbol: mainRow.currencySymbol || invoice.currencySymbol,
         });
       }
       //   const hasDiscount = invoice.lines.some(
@@ -549,7 +574,7 @@ async function generateInvoicePdf(req, res) {
           values.push(formatMoney(row.chargeAmount, row.currencySymbol));
 
           if (hasDiscount) {
-            values.push(row.discountPercent ? `${row.discountPercent}%` : "-");
+            values.push(row.discountPercent || "-");
 
             values.push(
               row.discountAmount

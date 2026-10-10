@@ -99,6 +99,39 @@ test("an unbroken multi-page contact number continues without truncation", () =>
   assert.equal(fields.map((field) => field.text).join(""), contact);
 });
 
+test("invoice rows reconcile with two stacked discounts and retain zero or one discount", async () => {
+  const makeInvoice = (discounts) => ({
+    ...baseInvoice,
+    totalAmount: 26928.3,
+    paidAmount: 0,
+    balanceAmount: 26928.3,
+    currencySymbol: "₹",
+    lines: [
+      { studentName: "Anaya", businessUnitId: "montessori", chargeType: "Montessory", lineType: "CHARGE", originalAmount: 17100, finalAmount: 14928.3, usageStart: "2026-07-01", usageEnd: "2026-09-30" },
+      ...discounts.map(({ amount, percent, name }) => ({ studentName: "Anaya", businessUnitId: "montessori", chargeType: "Montessory", lineType: "DISCOUNT", description: name, originalAmount: amount, finalAmount: -amount, discountAmount: amount, discountPercent: percent, usageStart: "2026-07-01", usageEnd: "2026-09-30" })),
+      { studentName: "Anaya", businessUnitId: "montessori", chargeType: "Registration", lineType: "CHARGE", originalAmount: 1000, finalAmount: 1000 },
+      { studentName: "Anaya", businessUnitId: "montessori", chargeType: "Admission", lineType: "CHARGE", originalAmount: 6000, finalAmount: 6000 },
+      { studentName: "Anaya", businessUnitId: "montessori", chargeType: "Security", lineType: "CHARGE", originalAmount: 5000, finalAmount: 5000 },
+    ],
+  });
+  const discountCases = [
+    [{ amount: 513, percent: 3, name: "Qtr Adv" }, { amount: 1658.7, percent: 10, name: "Girl Child" }],
+    [],
+    [{ amount: 513, percent: 3, name: "Qtr Adv" }],
+  ];
+
+  for (const discounts of discountCases) {
+    const invoice = makeInvoice(discounts);
+    const result = await renderInvoice(invoice);
+    const texts = result.lines.map((line) => line.text);
+    assert.equal(texts.includes("3% + 10%"), discounts.length === 2);
+    assert.equal(texts.includes("3%"), discounts.length === 1);
+    assert.equal(texts.includes("₹ 2171.70"), discounts.length === 2);
+    assert.ok(texts.includes("₹ 14928.30"));
+    assert.ok(texts.includes("₹ 26928.30"));
+  }
+});
+
 async function renderInvoice(invoice, invoiceCount = 1) {
   const lines = [];
   const images = [];
