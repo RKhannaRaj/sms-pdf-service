@@ -333,8 +333,13 @@ async function generateInvoicePdf(req, res) {
 
       const taxColumns = Array.from(taxTypes);
 
-      const hasDiscount = invoice.lines.some(
-        (l) => Number(l.discountAmount || 0) > 0,
+      // const hasDiscount = invoice.lines.some(
+      //   (l) => Number(l.discountAmount || 0) > 0,
+      // );
+
+      const hasDiscount = (invoice.lines || []).some(
+        (l) =>
+          Number(l.discountAmount || 0) > 0 && l.displayOnChargeRow !== false,
       );
 
       let totalOriginalAmount = 0;
@@ -399,10 +404,14 @@ async function generateInvoicePdf(req, res) {
           ) || line;
 
         // Discount Row
-        const discountRows = relatedRows.filter(
-          (r) => Number(r.discountAmount || 0) > 0,
-        );
+        // const discountRows = relatedRows.filter(
+        //   (r) => Number(r.discountAmount || 0) > 0,
+        // );
 
+        const discountRows = relatedRows.filter(
+          (r) =>
+            Number(r.discountAmount || 0) > 0 && r.displayOnChargeRow !== false,
+        );
         // ======================================
         // TAXES
         // ======================================
@@ -448,10 +457,24 @@ async function generateInvoicePdf(req, res) {
           0,
         );
 
+        // To display the charge total before the OVERALL discount,
+
+        const overallDiscountForRow = relatedRows
+          .filter(
+            (r) => r.lineType === "Discount" && r.displayOnChargeRow === false,
+          )
+          .reduce((sum, r) => sum + Math.abs(Number(r.discountAmount || 0)), 0);
+
+        const finalTotal =
+          Number(mainRow.finalAmount ?? mainRow.amount ?? 0) +
+          overallDiscountForRow +
+          totalTaxForRow;
+
         // CHARGE.finalAmount is already net of persisted discount lines. Do not
         // deduct the separately displayed discounts from it a second time.
-        const finalTotal =
-          Number(mainRow.finalAmount ?? mainRow.amount ?? 0) + totalTaxForRow;
+
+        // const finalTotal =
+        //   Number(mainRow.finalAmount ?? mainRow.amount ?? 0) + totalTaxForRow;
 
         // ======================================
         // TOTALS
@@ -638,44 +661,93 @@ async function generateInvoicePdf(req, res) {
 
       const totalsStartX = pageWidth - 40 - totalsTableWidth;
 
-      y = ensureSpace(y, 3 * 18);
+      // y = ensureSpace(y, 3 * 18);
+      // y = drawKeyValueRows(doc, {
+      //   startX: totalsStartX,
+
+      //   startY: y,
+
+      //   labelWidth: 110,
+
+      //   valueWidth: 100,
+
+      //   rowHeight: 18,
+
+      //   labelAlign: "right",
+
+      //   valueAlign: "right",
+
+      //   drawTopBorder: true,
+
+      //   drawRowBorders: true,
+
+      //   borderColor: "#999",
+
+      //   rows: [
+      //     {
+      //       label: "Total Amount :",
+      //       value: formatMoney(invoice.totalAmount, invoice.currencySymbol),
+      //     },
+
+      //     {
+      //       label: "Paid Amount :",
+      //       value: formatMoney(invoice.paidAmount, invoice.currencySymbol),
+      //     },
+
+      //     {
+      //       label: "Balance Due :",
+      //       value: formatMoney(invoice.balanceAmount, invoice.currencySymbol),
+      //     },
+      //   ],
+      //   fontManager: font,
+      // });
+
+      const overallDiscountAmount = Number(invoice.overallDiscountAmount || 0);
+
+      const presentationTotalAmount =
+        invoice.presentationTotalAmount != null
+          ? Number(invoice.presentationTotalAmount)
+          : Number(invoice.totalAmount || 0);
+
+      const summaryRows = [
+        {
+          label: "Total Amount :",
+          value: formatMoney(presentationTotalAmount, invoice.currencySymbol),
+        },
+      ];
+
+      if (overallDiscountAmount > 0) {
+        summaryRows.push({
+          label: "Discount :",
+          value: formatMoney(-overallDiscountAmount, invoice.currencySymbol),
+        });
+      }
+
+      summaryRows.push(
+        {
+          label: "Paid Amount :",
+          value: formatMoney(invoice.paidAmount, invoice.currencySymbol),
+        },
+        {
+          label: "Balance Due :",
+          value: formatMoney(invoice.balanceAmount, invoice.currencySymbol),
+        },
+      );
+
+      y = ensureSpace(y, summaryRows.length * 18);
+
       y = drawKeyValueRows(doc, {
         startX: totalsStartX,
-
         startY: y,
-
         labelWidth: 110,
-
         valueWidth: 100,
-
         rowHeight: 18,
-
         labelAlign: "right",
-
         valueAlign: "right",
-
         drawTopBorder: true,
-
         drawRowBorders: true,
-
         borderColor: "#999",
-
-        rows: [
-          {
-            label: "Total Amount :",
-            value: formatMoney(invoice.totalAmount, invoice.currencySymbol),
-          },
-
-          {
-            label: "Paid Amount :",
-            value: formatMoney(invoice.paidAmount, invoice.currencySymbol),
-          },
-
-          {
-            label: "Balance Due :",
-            value: formatMoney(invoice.balanceAmount, invoice.currencySymbol),
-          },
-        ],
+        rows: summaryRows,
         fontManager: font,
       });
 
