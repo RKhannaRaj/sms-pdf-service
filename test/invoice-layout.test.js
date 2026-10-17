@@ -132,6 +132,123 @@ test("invoice rows reconcile with two stacked discounts and retain zero or one d
   }
 });
 
+test("case-insensitive TAX lines aggregate by tax type and appear in invoice summary", async () => {
+  const invoice = {
+    ...baseInvoice,
+    totalAmount: 2424.02,
+    presentationTotalAmount: 2424.02,
+    paidAmount: 1000,
+    balanceAmount: 1424.02,
+    currencySymbol: "₹",
+    lines: [
+      { studentName: "Anaya", businessUnitId: "swim", chargeType: "Swim Fee", lineType: "CHARGE", originalAmount: 2200, finalAmount: 2178 },
+      { studentName: "Anaya", businessUnitId: "swim", chargeType: "Swim Fee", lineType: "DISCOUNT", originalAmount: 22, finalAmount: -22, discountAmount: 22, discountPercent: 1 },
+      { studentName: "Anaya", businessUnitId: "swim", chargeType: "GST 9%", lineType: "TAX", originalAmount: 2200, finalAmount: 100 },
+      { studentName: "Anaya", businessUnitId: "swim", chargeType: "GST 9%", lineType: "Tax", originalAmount: 2200, finalAmount: 96.02 },
+      { studentName: "Anaya", businessUnitId: "swim", chargeType: "CGST", lineType: "tax", originalAmount: 2200, finalAmount: 50 },
+    ],
+  };
+  const result = await renderInvoice(invoice);
+  const texts = result.lines.map((line) => line.text);
+
+  assert.ok(texts.includes("₹ 196.02"));
+  assert.ok(texts.includes("₹ 50.00"));
+  assert.ok(texts.includes("₹ 2178.00"));
+  assert.ok(texts.includes("₹ 2424.02"));
+  assert.ok(texts.includes("Total Tax :"));
+  assert.ok(texts.includes("Grand Total :"));
+  assert.equal(texts.filter((text) => text === "Swim Fee").length, 1);
+  assert.ok(texts.includes("₹ 1000.00"));
+  assert.ok(texts.includes("₹ 1424.02"));
+});
+
+test("Tax, TAX, tax, tAx and padded values produce identical invoice PDFs", async () => {
+  const taxCasingValues = ["Tax", "TAX", "tax", "tAx", " TAX "];
+  const renderedText = [];
+
+  for (const lineType of taxCasingValues) {
+    const result = await renderInvoice({
+      ...baseInvoice,
+      totalAmount: 118,
+      presentationTotalAmount: 118,
+      lines: [
+        { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: " cHaRgE ", originalAmount: 100, finalAmount: 99 },
+        { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: " discount ", originalAmount: 1, finalAmount: -1, discountAmount: 1 },
+        { studentName: "Student", businessUnitId: "unit", chargeType: "GST", lineType, originalAmount: 100, finalAmount: 19 },
+      ],
+    });
+    renderedText.push(result.lines
+      .map((line) => line.text)
+      .filter((text) => !text.startsWith("Printed on:")));
+  }
+
+  for (const output of renderedText.slice(1)) {
+    assert.deepEqual(output, renderedText[0]);
+  }
+  assert.ok(renderedText[0].includes("₹ 19.00"));
+  assert.ok(renderedText[0].includes("Total Tax :"));
+  assert.ok(renderedText[0].includes("Grand Total :"));
+});
+
+test("zero-valued TAX lines still show a tax summary and no-tax invoices retain existing summary", async () => {
+  const noTax = await renderInvoice({ ...baseInvoice });
+  const noTaxTexts = noTax.lines.map((line) => line.text);
+  assert.ok(noTaxTexts.includes("Total Amount :"));
+  assert.ok(!noTaxTexts.includes("Total Tax :"));
+  assert.ok(!noTaxTexts.includes("Grand Total :"));
+
+  const withZeroTax = await renderInvoice({
+    ...baseInvoice,
+    lines: [
+      { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: "charge", originalAmount: 100, finalAmount: 100 },
+      { studentName: "Student", businessUnitId: "unit", chargeType: "GST", lineType: "tAx", originalAmount: 100, finalAmount: 0 },
+    ],
+  });
+  const texts = withZeroTax.lines.map((line) => line.text);
+  assert.ok(texts.includes("Total Tax :"));
+  assert.ok(texts.includes("₹ 0.00"));
+  assert.ok(texts.includes("Grand Total :"));
+});
+
+test("TAX matching keeps students and business units separate and claims each line once", async () => {
+  const invoice = {
+    ...baseInvoice,
+    totalAmount: 236,
+    presentationTotalAmount: 236,
+    lines: [
+      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100 },
+      { studentName: "B", businessUnitId: "south", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100 },
+      { studentName: "A", businessUnitId: "north", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18 },
+      { studentName: "B", businessUnitId: "south", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18 },
+    ],
+  };
+  const result = await renderInvoice(invoice);
+  const texts = result.lines.map((line) => line.text);
+  assert.equal(texts.filter((text) => text === "₹ 18.00").length, 2);
+  assert.ok(texts.includes("₹ 200.00"));
+  assert.ok(texts.includes("₹ 36.00"));
+  assert.ok(texts.includes("₹ 236.00"));
+});
+
+test("equal-base charge lines remain grouped and a matching TAX line is counted once", async () => {
+  const invoice = {
+    ...baseInvoice,
+    totalAmount: 218,
+    presentationTotalAmount: 218,
+    lines: [
+      { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100 },
+      { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: "charge", originalAmount: 100, finalAmount: 100 },
+      { studentName: "Student", businessUnitId: "unit", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18 },
+    ],
+  };
+  const result = await renderInvoice(invoice);
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("₹ 200.00"));
+  assert.equal(texts.filter((text) => text === "₹ 18.00").length, 2,
+    "one value belongs to the GST column and one to the Total Tax summary");
+  assert.ok(texts.includes("₹ 218.00"));
+});
+
 async function renderInvoice(invoice, invoiceCount = 1) {
   const lines = [];
   const images = [];
