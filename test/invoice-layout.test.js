@@ -141,11 +141,11 @@ test("case-insensitive TAX lines aggregate by tax type and appear in invoice sum
     balanceAmount: 1424.02,
     currencySymbol: "₹",
     lines: [
-      { studentName: "Anaya", businessUnitId: "swim", chargeType: "Swim Fee", lineType: "CHARGE", originalAmount: 2200, finalAmount: 2178 },
-      { studentName: "Anaya", businessUnitId: "swim", chargeType: "Swim Fee", lineType: "DISCOUNT", originalAmount: 22, finalAmount: -22, discountAmount: 22, discountPercent: 1 },
-      { studentName: "Anaya", businessUnitId: "swim", chargeType: "GST 9%", lineType: "TAX", originalAmount: 2200, finalAmount: 100 },
-      { studentName: "Anaya", businessUnitId: "swim", chargeType: "GST 9%", lineType: "Tax", originalAmount: 2200, finalAmount: 96.02 },
-      { studentName: "Anaya", businessUnitId: "swim", chargeType: "CGST", lineType: "tax", originalAmount: 2200, finalAmount: 50 },
+      { studentId: "a", studentName: "Anaya", businessUnitId: "swim", chargeTypeId: "swim-fee", chargeType: "Swim Fee", lineType: "CHARGE", originalAmount: 2200, finalAmount: 2178, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "a", studentName: "Anaya", businessUnitId: "swim", chargeTypeId: "swim-fee", chargeType: "Swim Fee", lineType: "DISCOUNT", originalAmount: 22, finalAmount: -22, discountAmount: 22, discountPercent: 1, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "a", businessUnitId: "swim", chargeTypeId: "gst", chargeType: "GST 9%", lineType: "TAX", originalAmount: 2178, finalAmount: 196.02, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "swim-fee", taxable_base: 2178, tax_amount: 196.02 }] },
+      { studentId: "a", businessUnitId: "swim", chargeTypeId: "gst2", chargeType: "GST 9%", lineType: "Tax", originalAmount: 2178, finalAmount: 0, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [] },
+      { studentId: "a", businessUnitId: "swim", chargeTypeId: "cgst", chargeType: "CGST", lineType: "tax", originalAmount: 2178, finalAmount: 50, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "swim-fee", taxable_base: 2178, tax_amount: 50 }] },
     ],
   };
   const result = await renderInvoice(invoice);
@@ -210,16 +210,16 @@ test("zero-valued TAX lines still show a tax summary and no-tax invoices retain 
   assert.ok(texts.includes("Grand Total :"));
 });
 
-test("TAX matching keeps students and business units separate and claims each line once", async () => {
+test("TAX allocations keep students and business units separate", async () => {
   const invoice = {
     ...baseInvoice,
     totalAmount: 236,
     presentationTotalAmount: 236,
     lines: [
-      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100 },
-      { studentName: "B", businessUnitId: "south", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100 },
-      { studentName: "A", businessUnitId: "north", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18 },
-      { studentName: "B", businessUnitId: "south", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18 },
+      { studentId: "a", studentName: "A", businessUnitId: "north", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "b", studentName: "B", businessUnitId: "south", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "a", studentName: "A", businessUnitId: "north", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 18, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "tuition", tax_amount: 18 }] },
+      { studentId: "b", studentName: "B", businessUnitId: "south", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 18, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "tuition", tax_amount: 18 }] },
     ],
   };
   const result = await renderInvoice(invoice);
@@ -230,15 +230,15 @@ test("TAX matching keeps students and business units separate and claims each li
   assert.ok(texts.includes("₹ 236.00"));
 });
 
-test("equal-base charge lines remain grouped and a matching TAX line is counted once", async () => {
+test("same-type source charges consolidate and all their allocations are summed without chargeKey", async () => {
   const invoice = {
     ...baseInvoice,
     totalAmount: 218,
     presentationTotalAmount: 218,
     lines: [
-      { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100 },
-      { studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: "charge", originalAmount: 100, finalAmount: 100 },
-      { studentName: "Student", businessUnitId: "unit", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18 },
+      { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "charge", originalAmount: 100, finalAmount: 100, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "s", businessUnitId: "unit", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 18, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "tuition", charge_key: "one", tax_amount: 9 }, { charge_type_id: "tuition", charge_key: "two", tax_amount: 9 }] },
     ],
   };
   const result = await renderInvoice(invoice);
@@ -247,6 +247,100 @@ test("equal-base charge lines remain grouped and a matching TAX line is counted 
   assert.equal(texts.filter((text) => text === "₹ 18.00").length, 2,
     "one value belongs to the GST column and one to the Total Tax summary");
   assert.ok(texts.includes("₹ 218.00"));
+});
+
+test("one TAX line allocates to multiple charge types without copying its full amount", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 1530,
+    presentationTotalAmount: 1530,
+    lines: [
+      { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeTypeId: "swim", chargeType: "Swim Fee", lineType: "CHARGE", originalAmount: 1000, finalAmount: 1000, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeTypeId: "registration", chargeType: "Registration Fee", lineType: "CHARGE", originalAmount: 500, finalAmount: 500, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "s", businessUnitId: "unit", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 30, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "swim", tax_amount: 20 }, { charge_type_id: "registration", tax_amount: 10 }] },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("₹ 20.00"));
+  assert.ok(texts.includes("₹ 10.00"));
+  assert.ok(texts.includes("₹ 30.00"));
+  assert.ok(texts.includes("₹ 1020.00"));
+  assert.ok(texts.includes("₹ 510.00"));
+});
+
+test("allocation matching requires student, business unit, and billing period", async () => {
+  const charge = (studentId, bu, periodStart) => ({ studentId, studentName: studentId, businessUnitId: bu, chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100, usageStart: periodStart, usageEnd: "2026-07-31" });
+  const tax = (studentId, bu, periodStart, amount) => ({ studentId, businessUnitId: bu, chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: amount, billingStart: periodStart, billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "tuition", tax_amount: amount }] });
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 472,
+    presentationTotalAmount: 472,
+    lines: [charge("same", "north", "2026-07-01"), charge("other", "north", "2026-07-01"), charge("same", "south", "2026-07-01"), charge("same", "north", "2026-08-01"), tax("same", "north", "2026-07-01", 18), tax("other", "north", "2026-07-01", 18), tax("same", "south", "2026-07-01", 18), tax("same", "north", "2026-08-01", 18)],
+  });
+  assert.equal(result.lines.filter((line) => line.text === "₹ 18.00").length, 4);
+});
+
+test("discounted allocations render per student without amount matching", async () => {
+  const period = { usageStart: "2026-07-01", usageEnd: "2026-07-31" };
+  const taxPeriod = { billingStart: "2026-07-01", billingEnd: "2026-07-31" };
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 4772.02,
+    presentationTotalAmount: 4772.02,
+    lines: [
+      { studentId: "parv", studentName: "Parv Dubey", businessUnitId: "swim", chargeTypeId: "swim", chargeType: "Swim Fee", lineType: "CHARGE", originalAmount: 2200, finalAmount: 2200, ...period },
+      { studentId: "vedika", studentName: "Vedika Dubey", businessUnitId: "swim", chargeTypeId: "swim", chargeType: "Swim Fee", lineType: "CHARGE", originalAmount: 2200, finalAmount: 2178, ...period },
+      { studentId: "vedika", studentName: "Vedika Dubey", businessUnitId: "swim", chargeTypeId: "swim", chargeType: "Swim Fee", lineType: "DISCOUNT", originalAmount: 22, finalAmount: -22, discountAmount: 22, ...period },
+      { studentId: "parv", businessUnitId: "swim", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 198, ...taxPeriod, taxAllocations: [{ charge_type_id: "swim", taxable_base: 2200, tax_amount: 198 }] },
+      { studentId: "vedika", businessUnitId: "swim", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 196.02, ...taxPeriod, taxAllocations: [{ charge_type_id: "swim", taxable_base: 2178, tax_amount: 196.02 }] },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("₹ 198.00"));
+  assert.ok(texts.includes("₹ 196.02"));
+  assert.ok(texts.includes("₹ 2398.00"));
+  assert.ok(texts.includes("₹ 2374.02"));
+  assert.ok(texts.includes("₹ 4378.00"));
+  assert.ok(texts.includes("₹ 394.02"));
+  assert.ok(texts.includes("₹ 4772.02"));
+});
+
+test("unmatched allocations are omitted from rows while legacy tax summary stays authoritative", async () => {
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  try {
+    const result = await renderInvoice({
+      ...baseInvoice,
+      totalAmount: 118,
+      presentationTotalAmount: 118,
+      lines: [
+        { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+        { studentId: "s", businessUnitId: "unit", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 18, billingStart: "2026-07-01", billingEnd: "2026-07-31", taxAllocations: [{ charge_type_id: "missing-charge", tax_amount: 18 }] },
+      ],
+    });
+    const texts = result.lines.map((line) => line.text);
+    assert.ok(texts.includes("₹ 18.00"), "authoritative tax summary remains present");
+    assert.equal(texts.filter((text) => text === "₹ 118.00").length, 1, "the only 118 total is the authoritative invoice grand total");
+    assert.ok(warnings.some(([message]) => message.includes("TAX allocations")));
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("historical TAX lines without allocations keep authoritative tax summary only", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 118,
+    presentationTotalAmount: 118,
+    lines: [
+      { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 100, usageStart: "2026-07-01", usageEnd: "2026-07-31" },
+      { studentId: "s", businessUnitId: "unit", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", originalAmount: 100, finalAmount: 18, billingStart: "2026-07-01", billingEnd: "2026-07-31" },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("₹ 18.00"), "invoice summary uses persisted TAX finalAmount");
+  assert.equal(texts.filter((text) => text === "₹ 118.00").length, 1, "only the authoritative grand total is 118; no row-level tax is guessed");
 });
 
 async function renderInvoice(invoice, invoiceCount = 1) {

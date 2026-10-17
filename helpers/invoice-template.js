@@ -29,7 +29,9 @@ const LINE_TYPES = Object.freeze({
 });
 
 function normalizeLineType(value) {
-  return String(value ?? "").trim().toUpperCase();
+  return String(value ?? "")
+    .trim()
+    .toUpperCase();
 }
 
 function isLineType(value, expected) {
@@ -37,12 +39,16 @@ function isLineType(value, expected) {
 }
 
 function isChargeLineType(value) {
-  return isLineType(value, LINE_TYPES.CHARGE) || normalizeLineType(value) === "";
+  return (
+    isLineType(value, LINE_TYPES.CHARGE) || normalizeLineType(value) === ""
+  );
 }
 
 function toMinorUnits(value) {
   const amount = Number(value ?? 0);
-  return Number.isFinite(amount) ? Math.round((amount + Number.EPSILON) * 100) : 0;
+  return Number.isFinite(amount)
+    ? Math.round((amount + Number.EPSILON) * 100)
+    : 0;
 }
 
 function fromMinorUnits(value) {
@@ -367,7 +373,8 @@ async function generateInvoicePdf(req, res) {
       const hasDiscount = (invoice.lines || []).some(
         (l) =>
           isLineType(l.lineType, LINE_TYPES.DISCOUNT) &&
-          Number(l.discountAmount || 0) > 0 && l.displayOnChargeRow !== false,
+          Number(l.discountAmount || 0) > 0 &&
+          l.displayOnChargeRow !== false,
       );
 
       let totalOriginalAmount = 0;
@@ -376,10 +383,13 @@ async function generateInvoicePdf(req, res) {
 
       let totalTaxAmount = 0;
 
-      const allTaxLines = (invoice.lines || []).filter(
-        (line) => isLineType(line.lineType, LINE_TYPES.TAX),
+      const allTaxLines = (invoice.lines || []).filter((line) =>
+        isLineType(line.lineType, LINE_TYPES.TAX),
       );
-      const claimedTaxLines = new Set();
+      const matchedAllocationRefs = new Set();
+      const taxLineIndexes = new Map(
+        allTaxLines.map((line, index) => [line, index]),
+      );
       const hasTaxLines = allTaxLines.length > 0;
       const invoiceTaxTotalMinor = allTaxLines.reduce(
         (sum, line) => sum + toMinorUnits(line.finalAmount),
@@ -408,14 +418,18 @@ async function generateInvoicePdf(req, res) {
           grouped[child] = [];
         }
 
-        // unique grouping key
-        const key = [
-          line.studentName || "Unknown",
+        // Charge rows with the same persisted scope are intentionally displayed
+        // as one row; sum every source line and each matching tax allocation.
+        const linePeriodStart = line.billingStart || line.usageStart || "";
+        const linePeriodEnd = line.billingEnd || line.usageEnd || "";
+        const keyParts = [
+          line.studentId || line.studentName || "Unknown",
           line.businessUnitId || "",
-          line.chargeType || "",
-          line.billingStart || line.usageStart || "",
-          line.billingEnd || line.usageEnd || "",
-        ].join("|");
+          line.chargeTypeId || line.chargeType || "",
+          linePeriodStart,
+          linePeriodEnd,
+        ];
+        const key = JSON.stringify(keyParts);
 
         if (processed.has(key)) {
           continue;
@@ -428,30 +442,16 @@ async function generateInvoicePdf(req, res) {
         // ======================================
 
         const matchesGroup = (r) =>
-          [
-            r.studentName || "Unknown",
+          JSON.stringify([
+            r.studentId || r.studentName || "Unknown",
             r.businessUnitId || "",
-            r.chargeType || "",
+            r.chargeTypeId || r.chargeType || "",
             r.billingStart || r.usageStart || "",
             r.billingEnd || r.usageEnd || "",
-          ].join("|") === key;
-        const matchesTaxScope = (r) =>
-          [
-            r.studentName || "Unknown",
-            r.businessUnitId || "",
-            r.billingStart || r.usageStart || "",
-            r.billingEnd || r.usageEnd || "",
-          ].join("|") ===
-          [
-            mainRow.studentName || "Unknown",
-            mainRow.businessUnitId || "",
-            mainRow.billingStart || mainRow.usageStart || "",
-            mainRow.billingEnd || mainRow.usageEnd || "",
-          ].join("|");
+          ]) === key;
         const relatedRows = invoice.lines.filter(matchesGroup);
-        const mainChargeRows = relatedRows.filter(
-          (r) =>
-            isChargeLineType(r.lineType),
+        const mainChargeRows = relatedRows.filter((r) =>
+          isChargeLineType(r.lineType),
         );
 
         // Main Amount
@@ -462,6 +462,15 @@ async function generateInvoicePdf(req, res) {
               isChargeLineType(r.lineType),
           ) || line;
 
+        const matchesTaxScope = (taxLine) =>
+          Boolean(mainRow.studentId && taxLine.studentId) &&
+          taxLine.studentId === mainRow.studentId &&
+          taxLine.businessUnitId === mainRow.businessUnitId &&
+          (taxLine.billingStart || taxLine.usageStart || "") ===
+            (mainRow.billingStart || mainRow.usageStart || "") &&
+          (taxLine.billingEnd || taxLine.usageEnd || "") ===
+            (mainRow.billingEnd || mainRow.usageEnd || "");
+
         // Discount Row
         // const discountRows = relatedRows.filter(
         //   (r) => Number(r.discountAmount || 0) > 0,
@@ -470,70 +479,32 @@ async function generateInvoicePdf(req, res) {
         const discountRows = relatedRows.filter(
           (r) =>
             isLineType(r.lineType, LINE_TYPES.DISCOUNT) &&
-            Number(r.discountAmount || 0) > 0 && r.displayOnChargeRow !== false,
+            Number(r.discountAmount || 0) > 0 &&
+            r.displayOnChargeRow !== false,
         );
         // ======================================
         // TAXES
         // ======================================
 
         const rowTaxes = {};
-        const mainChargeBases = new Set(
-          mainChargeRows.map((chargeLine) => toMinorUnits(chargeLine.originalAmount)),
-        );
-
+        const chargeTypeId = mainRow.chargeTypeId;
+        const matchingTaxLines = allTaxLines.filter(matchesTaxScope);
         for (const taxName of taxColumns) {
-          const eligibleTaxLines = allTaxLines.filter(
-            (taxLine) =>
-              !claimedTaxLines.has(taxLine) &&
-              taxLine.chargeType === taxName &&
-              matchesTaxScope(taxLine) &&
-              mainChargeRows.some(
-                (chargeLine) =>
-                  toMinorUnits(taxLine.originalAmount) ===
-                  toMinorUnits(chargeLine.originalAmount),
-              ),
-          );
-          const matchingChargeGroups = new Set(
-            (invoice.lines || [])
-              .filter(
-                (candidate) =>
-                  isChargeLineType(candidate.lineType) &&
-                  matchesTaxScope(candidate) &&
-                  mainChargeBases.has(toMinorUnits(candidate.originalAmount)),
-              )
-              .map((candidate) => candidate.chargeType || ""),
-          );
-          const matchingChargeCount = matchingChargeGroups.size;
-          if (eligibleTaxLines.length > 0 && matchingChargeCount > 1) {
-            console.warn("TAX lines match multiple charge groups; omitting ambiguous row-level allocation", {
-              invoiceNumber: invoice.invoiceNumber,
-              studentName: mainRow.studentName,
-              businessUnitId: mainRow.businessUnitId,
-              chargeType: mainRow.chargeType,
-              taxType: taxName,
-              taxableBase: mainRow.originalAmount,
-              matchingChargeCount,
-              matchingTaxLineCount: eligibleTaxLines.length,
-            });
-            rowTaxes[taxName] = 0;
-            continue;
-          }
-          const matchingTaxLines = allTaxLines.filter(
-            (taxLine) =>
-              !claimedTaxLines.has(taxLine) &&
-              taxLine.chargeType === taxName &&
-              matchesTaxScope(taxLine) &&
-              mainChargeRows.some(
-                (chargeLine) =>
-                  toMinorUnits(taxLine.originalAmount) ===
-                  toMinorUnits(chargeLine.originalAmount),
-              ),
-          );
-          const taxTotalMinor = matchingTaxLines.reduce(
-            (sum, taxLine) => sum + toMinorUnits(taxLine.finalAmount),
-            0,
-          );
-          matchingTaxLines.forEach((taxLine) => claimedTaxLines.add(taxLine));
+          const taxTotalMinor = matchingTaxLines
+            .filter((taxLine) => taxLine.chargeType === taxName)
+            .flatMap((taxLine) => {
+              const taxLineIndex = taxLineIndexes.get(taxLine);
+              return (
+                Array.isArray(taxLine.taxAllocations)
+                  ? taxLine.taxAllocations
+                  : []
+              ).flatMap((allocation, allocationIndex) => {
+                if (allocation.charge_type_id !== chargeTypeId) return [];
+                matchedAllocationRefs.add(`${taxLineIndex}:${allocationIndex}`);
+                return [toMinorUnits(allocation.tax_amount)];
+              });
+            })
+            .reduce((sum, amount) => sum + amount, 0);
           rowTaxes[taxName] = fromMinorUnits(taxTotalMinor);
         }
 
@@ -615,22 +586,69 @@ async function generateInvoicePdf(req, res) {
         });
       }
 
-      const unassignedTaxLines = allTaxLines.filter(
-        (taxLine) => !claimedTaxLines.has(taxLine),
+      const unmatchedAllocations = allTaxLines.flatMap(
+        (taxLine, taxLineIndex) => {
+          const allocations = Array.isArray(taxLine.taxAllocations)
+            ? taxLine.taxAllocations
+            : [];
+          if (!allocations.length) {
+            console.warn(
+              "TAX line has no allocation metadata; row tax is omitted while authoritative invoice summary is retained",
+              {
+                invoiceNumber: invoice.invoiceNumber,
+                studentId: taxLine.studentId,
+                businessUnitId: taxLine.businessUnitId,
+                taxType: taxLine.chargeType,
+                finalAmount: taxLine.finalAmount,
+              },
+            );
+          }
+          const allocatedTotalMinor = allocations.reduce(
+            (sum, allocation) => sum + toMinorUnits(allocation.tax_amount),
+            0,
+          );
+          if (
+            allocations.length &&
+            allocatedTotalMinor !== toMinorUnits(taxLine.finalAmount)
+          ) {
+            console.warn(
+              "TAX allocation total does not reconcile with persisted TAX amount",
+              {
+                invoiceNumber: invoice.invoiceNumber,
+                taxType: taxLine.chargeType,
+                allocatedAmount: fromMinorUnits(allocatedTotalMinor),
+                persistedTaxAmount: fromMinorUnits(
+                  toMinorUnits(taxLine.finalAmount),
+                ),
+              },
+            );
+          }
+          return allocations.flatMap((allocation, allocationIndex) =>
+            matchedAllocationRefs.has(`${taxLineIndex}:${allocationIndex}`)
+              ? []
+              : [{ taxLine, allocation }],
+          );
+        },
       );
-      if (unassignedTaxLines.length > 0) {
-        console.warn("Invoice contains TAX lines that could not be matched to a charge row", {
-          invoiceNumber: invoice.invoiceNumber,
-          unassignedTaxLines: unassignedTaxLines.map((line) => ({
-            studentName: line.studentName,
-            businessUnitId: line.businessUnitId,
-            chargeType: line.chargeType,
-            originalAmount: line.originalAmount,
-            finalAmount: line.finalAmount,
-            billingStart: line.billingStart || line.usageStart,
-            billingEnd: line.billingEnd || line.usageEnd,
-          })),
-        });
+      if (unmatchedAllocations.length > 0) {
+        console.warn(
+          "Invoice contains TAX allocations that could not be matched to a charge group",
+          {
+            invoiceNumber: invoice.invoiceNumber,
+            unmatchedAllocations: unmatchedAllocations.map(
+              ({ taxLine, allocation }) => ({
+                studentId: taxLine.studentId,
+                businessUnitId: taxLine.businessUnitId,
+                taxType: taxLine.chargeType,
+                chargeTypeId: allocation.charge_type_id,
+                chargeKey: allocation.charge_key,
+                taxAmount: allocation.tax_amount,
+                billingStart: taxLine.billingStart || taxLine.usageStart,
+                billingEnd: taxLine.billingEnd || taxLine.usageEnd,
+              }),
+            ),
+          },
+        );
       }
       //   const hasDiscount = invoice.lines.some(
       //     (l) => Number(l.discountAmount || 0) > 0,
@@ -835,40 +853,58 @@ async function generateInvoicePdf(req, res) {
           : Number(invoice.totalAmount || 0);
 
       const authoritativeGrandTotal = presentationTotalAmount;
-      const totalAmountExcludingTax = fromMinorUnits(totalAmountExcludingTaxMinor);
+      const totalAmountExcludingTax = fromMinorUnits(
+        totalAmountExcludingTaxMinor,
+      );
       const totalTaxAmountForSummary = fromMinorUnits(invoiceTaxTotalMinor);
       const reconciliationDifferenceMinor =
         toMinorUnits(authoritativeGrandTotal) -
-        (toMinorUnits(totalAmountExcludingTax) + toMinorUnits(totalTaxAmountForSummary));
+        (toMinorUnits(totalAmountExcludingTax) +
+          toMinorUnits(totalTaxAmountForSummary));
       if (hasTaxLines && reconciliationDifferenceMinor !== 0) {
-        console.warn("Invoice tax summary does not reconcile with authoritative total", {
-          invoiceNumber: invoice.invoiceNumber,
-          totalAmountExcludingTax,
-          totalTax: totalTaxAmountForSummary,
-          authoritativeGrandTotal,
-          difference: fromMinorUnits(reconciliationDifferenceMinor),
-        });
+        console.warn(
+          "Invoice tax summary does not reconcile with authoritative total",
+          {
+            invoiceNumber: invoice.invoiceNumber,
+            totalAmountExcludingTax,
+            totalTax: totalTaxAmountForSummary,
+            authoritativeGrandTotal,
+            difference: fromMinorUnits(reconciliationDifferenceMinor),
+          },
+        );
       }
 
       const summaryRows = hasTaxLines
         ? [
             {
               label: "Total Amount :",
-              value: formatMoney(totalAmountExcludingTax, invoice.currencySymbol),
+              value: formatMoney(
+                totalAmountExcludingTax,
+                invoice.currencySymbol,
+              ),
             },
             {
               label: "Total Tax :",
-              value: formatMoney(totalTaxAmountForSummary, invoice.currencySymbol),
+              value: formatMoney(
+                totalTaxAmountForSummary,
+                invoice.currencySymbol,
+              ),
             },
             {
               label: "Grand Total :",
-              value: formatMoney(authoritativeGrandTotal, invoice.currencySymbol),
+              value: formatMoney(
+                authoritativeGrandTotal,
+                invoice.currencySymbol,
+              ),
             },
           ]
         : [
             {
               label: "Total Amount :",
-              value: formatMoney(presentationTotalAmount, invoice.currencySymbol),
+              value: formatMoney(
+                presentationTotalAmount,
+                invoice.currencySymbol,
+              ),
             },
           ];
 
