@@ -132,6 +132,135 @@ test("invoice rows reconcile with two stacked discounts and retain zero or one d
   }
 });
 
+test("PER_STUDENT_BU discount is shown once as informational breakdown with authoritative total", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 13440,
+    presentationTotalAmount: 13440,
+    balanceAmount: 13440,
+    currencySymbol: "₹",
+    lines: [
+      { studentId: "s1", studentName: "Anaya", businessUnitId: "north", chargeTypeId: "tuition", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 10000, finalAmount: 8000 },
+      { studentId: "s1", studentName: "Anaya", businessUnitId: "north", chargeTypeId: "activity", chargeType: "Activity", lineType: "CHARGE", originalAmount: 5000, finalAmount: 4000 },
+      { studentId: "s1", studentName: "Anaya", businessUnitId: "north", chargeType: "BU Discount", description: "Sibling Benefit", lineType: "DISCOUNT", application_scope: "PER_STUDENT_BU", finalAmount: -3000, displayOnChargeRow: false },
+      { studentId: "s1", studentName: "Anaya", businessUnitId: "north", chargeTypeId: "gst", chargeType: "GST", lineType: "TAX", finalAmount: 1440, taxAllocations: [{ charge_type_id: "tuition", tax_amount: 960 }, { charge_type_id: "activity", tax_amount: 480 }] },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("Gross Charges :"));
+  assert.ok(texts.includes("₹ 15000.00"));
+  assert.ok(texts.includes("Sibling Benefit (Anaya / north) :"));
+  assert.ok(texts.includes("₹ -3000.00"));
+  assert.ok(texts.includes("Net Charges :"));
+  assert.ok(texts.includes("₹ 12000.00"));
+  assert.ok(texts.includes("₹ 1440.00"));
+  assert.equal(texts.filter((text) => text === "₹ 13440.00").length, 2,
+    "the authoritative grand total is repeated as the payment amount");
+  assert.equal(texts.filter((text) => text === "₹ -3000.00").length, 1);
+  assert.ok(texts.includes("₹ 8960.00"));
+  assert.ok(texts.includes("₹ 4480.00"));
+});
+
+test("multiple PER_STUDENT_BU discounts and associations are listed separately", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 270,
+    lines: [
+      { studentId: "s1", studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 200, finalAmount: 180 },
+      { studentId: "s2", studentName: "B", businessUnitId: "south", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 90 },
+      { studentId: "s1", studentName: "A", businessUnitId: "north", description: "Award A", lineType: "DISCOUNT", application_scope: "PER_STUDENT_BU", finalAmount: -15 },
+      { studentId: "s1", studentName: "A", businessUnitId: "north", description: "Award B", lineType: "DISCOUNT", application_scope: "PER_STUDENT_BU", finalAmount: -5 },
+      { studentId: "s2", studentName: "B", businessUnitId: "south", description: "Award C", lineType: "DISCOUNT", application_scope: "PER_STUDENT_BU", finalAmount: -10 },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  for (const expected of ["Award A (A / north) :", "Award B (A / north) :", "Award C (B / south) :", "₹ -15.00", "₹ -5.00", "₹ -10.00"]) {
+    assert.ok(texts.includes(expected), expected);
+  }
+  assert.equal(texts.filter((text) => text === "₹ 270.00").length, 2,
+    "summary total is repeated as the payment amount");
+});
+
+test("PER_CHARGE-only discounts retain existing charge-row display", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 108,
+    lines: [
+      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 90 },
+      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "DISCOUNT", application_scope: "PER_CHARGE", discountAmount: 10, discountPercent: 10, finalAmount: -10 },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("Discount"));
+  assert.ok(texts.includes("₹ 10.00"));
+  assert.ok(!texts.includes("Gross Charges :"));
+});
+
+test("PER_CHARGE and PER_STUDENT_BU discounts are displayed separately", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 108,
+    lines: [
+      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 90 },
+      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "DISCOUNT", application_scope: "PER_CHARGE", discountAmount: 10, discountPercent: 10, finalAmount: -10 },
+      { studentName: "A", businessUnitId: "north", description: "BU Award", lineType: "DISCOUNT", application_scope: "PER_STUDENT_BU", finalAmount: -4, displayOnChargeRow: false },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("₹ 10.00"));
+  assert.ok(texts.includes("BU Award (A / north) :"));
+  assert.ok(texts.includes("₹ -4.00"));
+  assert.equal(texts.filter((text) => text === "₹ 108.00").length, 1);
+});
+
+test("missing application_scope is not inferred to be a BU discount", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 90,
+    lines: [
+      { studentName: "A", businessUnitId: "north", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 90 },
+      { studentName: "A", businessUnitId: "north", description: "Unscoped", lineType: "DISCOUNT", finalAmount: -10, displayOnChargeRow: false },
+    ],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(!texts.includes("Gross Charges :"));
+  assert.ok(!texts.some((text) => text.startsWith("Unscoped")));
+  assert.ok(texts.includes("₹ 90.00"));
+});
+
+test("historical OVERALL discount summary remains unchanged", async () => {
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 90,
+    overallDiscountAmount: 10,
+    lines: [{ studentName: "A", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 90 }],
+  });
+  const texts = result.lines.map((line) => line.text);
+  assert.ok(texts.includes("Discount :"));
+  assert.ok(texts.includes("₹ -10.00"));
+  assert.ok(!texts.includes("Gross Charges :"));
+});
+
+test("many BU discount rows continue safely across pages", async () => {
+  const discounts = Array.from({ length: 28 }, (_, index) => ({
+    studentId: "s", studentName: "Student", businessUnitId: "unit",
+    description: `BU Award ${index + 1}`, lineType: "DISCOUNT",
+    application_scope: "PER_STUDENT_BU", finalAmount: -1,
+  }));
+  const result = await renderInvoice({
+    ...baseInvoice,
+    totalAmount: 99,
+    lines: [
+      { studentId: "s", studentName: "Student", businessUnitId: "unit", chargeType: "Tuition", lineType: "CHARGE", originalAmount: 100, finalAmount: 99 },
+      ...discounts,
+    ],
+  });
+  assert.ok(result.pages.size > 1);
+  assert.ok(result.lines.some((line) => line.text === "BU Award 28 (Student / unit) :"));
+  assert.equal(result.lines.filter((line) => line.text === "₹ 99.00").length, 3,
+    "the charge row, authoritative invoice total, and payment amount each show 99");
+});
+
 test("case-insensitive TAX lines aggregate by tax type and appear in invoice summary", async () => {
   const invoice = {
     ...baseInvoice,

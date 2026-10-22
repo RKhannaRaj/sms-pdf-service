@@ -374,7 +374,16 @@ async function generateInvoicePdf(req, res) {
         (l) =>
           isLineType(l.lineType, LINE_TYPES.DISCOUNT) &&
           Number(l.discountAmount || 0) > 0 &&
+          normalizeLineType(l.application_scope) !== "PER_STUDENT_BU" &&
           l.displayOnChargeRow !== false,
+      );
+
+      // PER_STUDENT_BU rows are audit lines: charge finalAmount values already
+      // include their effect, so show them in the summary without applying them.
+      const buDiscountLines = (invoice.lines || []).filter(
+        (line) =>
+          isLineType(line.lineType, LINE_TYPES.DISCOUNT) &&
+          normalizeLineType(line.application_scope) === "PER_STUDENT_BU",
       );
 
       let totalOriginalAmount = 0;
@@ -480,6 +489,7 @@ async function generateInvoicePdf(req, res) {
           (r) =>
             isLineType(r.lineType, LINE_TYPES.DISCOUNT) &&
             Number(r.discountAmount || 0) > 0 &&
+            normalizeLineType(r.application_scope) !== "PER_STUDENT_BU" &&
             r.displayOnChargeRow !== false,
         );
         // ======================================
@@ -800,7 +810,7 @@ async function generateInvoicePdf(req, res) {
       //     align: "right",
       //   });
 
-      const totalsTableWidth = 210;
+      const totalsTableWidth = buDiscountLines.length ? 390 : 210;
 
       const totalsStartX = pageWidth - 40 - totalsTableWidth;
 
@@ -908,7 +918,48 @@ async function generateInvoicePdf(req, res) {
             },
           ];
 
-      if (!hasTaxLines && overallDiscountAmount > 0) {
+      if (buDiscountLines.length) {
+        const buDiscountRows = buDiscountLines.map((line) => {
+          const association = [line.studentName || line.studentId, line.businessUnitName || line.businessUnitId]
+            .filter(Boolean)
+            .join(" / ");
+          const name = line.discountName || line.description || "BU discount";
+          return {
+            label: `${name}${association ? ` (${association})` : ""} :`,
+            value: formatMoney(
+              -Math.abs(toMinorUnits(line.finalAmount ?? line.discountAmount)) / 100,
+              line.currencySymbol || invoice.currencySymbol,
+            ),
+          };
+        });
+
+        summaryRows.splice(0, summaryRows.length,
+          {
+            label: "Gross Charges :",
+            value: formatMoney(totalOriginalAmount, invoice.currencySymbol),
+          },
+          ...buDiscountRows,
+          ...(!hasTaxLines && overallDiscountAmount > 0
+            ? [{
+                label: "Discount :",
+                value: formatMoney(-overallDiscountAmount, invoice.currencySymbol),
+              }]
+            : []),
+          {
+            label: "Net Charges :",
+            value: formatMoney(totalAmountExcludingTax, invoice.currencySymbol),
+          },
+          ...(hasTaxLines
+            ? [{ label: "Total Tax :", value: formatMoney(totalTaxAmountForSummary, invoice.currencySymbol) }]
+            : []),
+          {
+            label: "Grand Total :",
+            value: formatMoney(authoritativeGrandTotal, invoice.currencySymbol),
+          },
+        );
+      }
+
+      if (!hasTaxLines && overallDiscountAmount > 0 && !buDiscountLines.length) {
         summaryRows.push({
           label: "Discount :",
           value: formatMoney(-overallDiscountAmount, invoice.currencySymbol),
@@ -926,22 +977,51 @@ async function generateInvoicePdf(req, res) {
         },
       );
 
-      y = ensureSpace(y, summaryRows.length * 18);
-
-      y = drawKeyValueRows(doc, {
-        startX: totalsStartX,
-        startY: y,
-        labelWidth: 110,
-        valueWidth: 100,
-        rowHeight: 18,
-        labelAlign: "right",
-        valueAlign: "right",
-        drawTopBorder: true,
-        drawRowBorders: true,
-        borderColor: "#999",
-        rows: summaryRows,
-        fontManager: font,
-      });
+      if (buDiscountLines.length) {
+        let summaryIndex = 0;
+        while (summaryIndex < summaryRows.length) {
+          if (y + 18 > contentBottom) y = nextPage();
+          const rowsThatFit = Math.max(
+            1,
+            Math.floor((contentBottom - y) / 18),
+          );
+          const pageRows = summaryRows.slice(
+            summaryIndex,
+            summaryIndex + rowsThatFit,
+          );
+          y = drawKeyValueRows(doc, {
+            startX: totalsStartX,
+            startY: y,
+            labelWidth: totalsTableWidth - 100,
+            valueWidth: 100,
+            rowHeight: 18,
+            labelAlign: "right",
+            valueAlign: "right",
+            drawTopBorder: true,
+            drawRowBorders: true,
+            borderColor: "#999",
+            rows: pageRows,
+            fontManager: font,
+          });
+          summaryIndex += pageRows.length;
+        }
+      } else {
+        y = ensureSpace(y, summaryRows.length * 18);
+        y = drawKeyValueRows(doc, {
+          startX: totalsStartX,
+          startY: y,
+          labelWidth: 110,
+          valueWidth: 100,
+          rowHeight: 18,
+          labelAlign: "right",
+          valueAlign: "right",
+          drawTopBorder: true,
+          drawRowBorders: true,
+          borderColor: "#999",
+          rows: summaryRows,
+          fontManager: font,
+        });
+      }
 
       // =====================================
       // PAYMENT SECTION
