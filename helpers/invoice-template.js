@@ -1740,8 +1740,14 @@ async function generateInvoicePdf(req, res) {
           ),
         );
 
+        // const discountAmount = discountRows.reduce(
+        //   (total, row) => total + Number(row.discountAmount || 0),
+        //   0,
+        // );
         const discountAmount = discountRows.reduce(
-          (total, row) => total + Number(row.discountAmount || 0),
+          (total, row) =>
+            total +
+            Math.abs(Number(row.discountAmount ?? row.finalAmount ?? 0)),
           0,
         );
 
@@ -2114,33 +2120,130 @@ async function generateInvoicePdf(req, res) {
 
       const money = (minor) =>
         formatMoney(fromMinorUnits(minor), invoice.currencySymbol);
-      const summaryRows = [
-        { label: "BU Subtotal :", value: money(grossChargeMinor) },
-        {
-          label: "PER_CHARGE Discount :",
-          value: money(-perChargeDiscountMinor),
-        },
-        ...perStudentBuDiscountLines.map((line) => ({
-          label: `${line.discountName || line.description || "BU Discount"} :`,
-          value: money(
-            -Math.abs(
+      // const summaryRows = [
+      //   { label: "BU Subtotal :", value: money(grossChargeMinor) },
+      //   {
+      //     label: "PER_CHARGE Discount :",
+      //     value: money(-perChargeDiscountMinor),
+      //   },
+      //   ...perStudentBuDiscountLines.map((line) => ({
+      //     label: `${line.discountName || line.description || "BU Discount"} :`,
+      //     value: money(
+      //       -Math.abs(
+      //         toMinorUnits(
+      //           line.finalAmount ?? line.amount ?? line.discountAmount,
+      //         ),
+      //       ),
+      //     ),
+      //   })),
+      //   { label: "PER_STUDENT_BU Discount :", value: money(-buDiscountMinor) },
+      //   {
+      //     label: "Total Discounts :",
+      //     value: money(-(perChargeDiscountMinor + buDiscountMinor)),
+      //   },
+      //   {
+      //     label: "Balance After Discounts :",
+      //     value: money(netChargeMinor - buDiscountMinor),
+      //   },
+      //   { label: "Taxes :", value: money(taxMinor) },
+      //   { label: "Total Due :", value: money(persistedTotalMinor) },
+      //   {
+      //     label: "Paid Amount :",
+      //     value: formatMoney(invoice.paidAmount, invoice.currencySymbol),
+      //   },
+      //   {
+      //     label: "Net Due :",
+      //     value: formatMoney(invoice.balanceAmount, invoice.currencySymbol),
+      //   },
+      // ];
+
+      const getBuName = (line) => {
+        if (line.businessUnitName) return line.businessUnitName;
+
+        const matchingCharge = invoiceLines.find(
+          (charge) =>
+            isChargeLineType(charge.lineType) &&
+            charge.businessUnitId === line.businessUnitId &&
+            charge.studentId === line.studentId &&
+            charge.businessUnitName,
+        );
+
+        return matchingCharge?.businessUnitName || "Business Unit";
+      };
+
+      const buDiscountGroups = new Map();
+
+      for (const line of perStudentBuDiscountLines) {
+        const name = getBuName(line);
+        const key = `${line.studentId || ""}:${line.businessUnitId || name}`;
+        const current = buDiscountGroups.get(key);
+
+        if (current) {
+          current.amountMinor += Math.abs(
+            toMinorUnits(
+              line.finalAmount ?? line.amount ?? line.discountAmount,
+            ),
+          );
+        } else {
+          buDiscountGroups.set(key, {
+            name,
+            amountMinor: Math.abs(
               toMinorUnits(
                 line.finalAmount ?? line.amount ?? line.discountAmount,
               ),
             ),
-          ),
-        })),
-        { label: "PER_STUDENT_BU Discount :", value: money(-buDiscountMinor) },
+          });
+        }
+      }
+
+      const hasAnyDiscount = perChargeDiscountMinor > 0 || buDiscountMinor > 0;
+
+      const summaryRows = [];
+
+      if (hasAnyDiscount) {
+        summaryRows.push({
+          label: "BU Subtotal :",
+          value: money(grossChargeMinor),
+        });
+
+        if (perChargeDiscountMinor > 0) {
+          summaryRows.push({
+            label: "Total Charge Discount :",
+            value: money(-perChargeDiscountMinor),
+          });
+        }
+
+        for (const group of buDiscountGroups.values()) {
+          summaryRows.push({
+            label: `${group.name} Discount :`,
+            value: money(-group.amountMinor),
+          });
+        }
+
+        summaryRows.push(
+          {
+            label: "Total Discounts :",
+            value: money(-(perChargeDiscountMinor + buDiscountMinor)),
+          },
+          {
+            label: "Balance After Discounts :",
+            value: money(netChargeMinor - buDiscountMinor),
+          },
+        );
+      }
+
+      if (taxMinor !== 0) {
+        summaryRows.push({
+          label: "Taxes :",
+          value: money(taxMinor),
+        });
+      }
+
+      summaryRows.push(
         {
-          label: "Total Discounts :",
-          value: money(-(perChargeDiscountMinor + buDiscountMinor)),
+          label: "Total Due :",
+          value: money(persistedTotalMinor),
         },
-        {
-          label: "Balance After Discounts :",
-          value: money(netChargeMinor - buDiscountMinor),
-        },
-        { label: "Taxes :", value: money(taxMinor) },
-        { label: "Total Due :", value: money(persistedTotalMinor) },
         {
           label: "Paid Amount :",
           value: formatMoney(invoice.paidAmount, invoice.currencySymbol),
@@ -2149,7 +2252,7 @@ async function generateInvoicePdf(req, res) {
           label: "Net Due :",
           value: formatMoney(invoice.balanceAmount, invoice.currencySymbol),
         },
-      ];
+      );
 
       if (summaryRows.length) {
         let summaryIndex = 0;
